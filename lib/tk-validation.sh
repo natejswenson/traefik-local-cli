@@ -3,8 +3,8 @@
 # Input validation and security checking functions
 
 # Source logging for error messages
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/tk-logging.sh"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$LIB_DIR/tk-logging.sh"
 
 #----------------------------------------------------
 # INPUT VALIDATION

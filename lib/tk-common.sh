@@ -7,7 +7,7 @@ set -e
 #----------------------------------------------------
 # LIBRARY DIRECTORY
 #----------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 #----------------------------------------------------
 # DEFAULT CONFIGURATION
@@ -68,9 +68,9 @@ load_all_configs() {
 #----------------------------------------------------
 
 # Load libraries in dependency order
-source "$SCRIPT_DIR/tk-logging.sh"
-source "$SCRIPT_DIR/tk-validation.sh"
-source "$SCRIPT_DIR/tk-docker.sh"
+source "$LIB_DIR/tk-logging.sh"
+source "$LIB_DIR/tk-validation.sh"
+source "$LIB_DIR/tk-docker.sh"
 
 #----------------------------------------------------
 # UTILITY FUNCTIONS

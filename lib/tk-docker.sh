@@ -3,8 +3,8 @@
 # Docker and Docker Compose wrapper functions
 
 # Source dependencies
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/tk-logging.sh"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$LIB_DIR/tk-logging.sh"
 
 #----------------------------------------------------
 # CONFIGURATION

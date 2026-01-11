@@ -1,0 +1,12 @@
+# Coverage reports
+coverage/
+*.tap
+*.xml
+
+# Test artifacts
+test_project/
+*.log
+
+# Temporary files
+*.tmp
+.bats-*
