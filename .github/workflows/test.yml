@@ -44,7 +44,6 @@ jobs:
 
       - name: Run unit tests
         run: |
-          cd scripts
           ./run-tests.sh --unit --verbose
         env:
           TK_TEST_MODE: "true"
