@@ -1,4 +1,25 @@
 #!/bin/bash
+#==============================================================================
+# DNS Setup Script for macOS
+#==============================================================================
+# Purpose: Configure local DNS resolution for *.home.local domains
+# Usage:   ./setup-dns.sh
+#
+# Requirements:
+#   - macOS operating system
+#   - dnsmasq installed (brew install dnsmasq)
+#   - sudo privileges
+#
+# This script will:
+#   - Create macOS resolver configuration for .home.local
+#   - Configure nameserver to use localhost
+#   - Restart dnsmasq service
+#   - Flush DNS cache
+#   - Verify DNS resolution
+#
+# Note: This is macOS-specific. For other systems, configure DNS differently.
+#==============================================================================
+
 set -e
 
 echo "🔧 Fixing DNS resolution for *.home.local domains"

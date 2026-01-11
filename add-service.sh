@@ -1,7 +1,30 @@
 #!/bin/bash
-set -e
+#==============================================================================
+# Add Service Script
+#==============================================================================
+# Purpose: Add a new service to Traefik setup from scratch
+# Usage:   ./add-service.sh <service-name> [port] [language]
+#
+# Arguments:
+#   service-name  - Name for the new service (required)
+#   port          - Internal port for the service (default: 8000)
+#   language      - Service language: python|node (default: python)
+#
+# Examples:
+#   ./add-service.sh my-api
+#   ./add-service.sh api-v2 8080 python
+#   ./add-service.sh web-app 3000 node
+#
+# This script will:
+#   - Create service directory structure
+#   - Generate Dockerfile for specified language
+#   - Create boilerplate application files
+#   - Add service to docker-compose.yml with Traefik labels
+#
+# Note: For connecting existing services, use connect-service.sh instead
+#==============================================================================
 
-# Script to add a new service to Traefik setup
+set -e
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <service-name> [port] [language]"
