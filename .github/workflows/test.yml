@@ -34,9 +34,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats
 
-          # Install kcov for coverage
-          sudo apt-get install -y kcov
-
           # Install bc for coverage calculations
           sudo apt-get install -y bc
 
