@@ -116,18 +116,11 @@ jobs:
                 const coveragePercent = match[1];
                 const threshold = process.env.COVERAGE_THRESHOLD;
                 const status = parseFloat(coveragePercent) >= parseFloat(threshold) ? '✅' : '❌';
+                const passMsg = '✅ Coverage meets the required threshold';
+                const failMsg = '❌ Coverage is below the required threshold';
+                const resultMsg = parseFloat(coveragePercent) >= parseFloat(threshold) ? passMsg : failMsg;
 
-                const body = `## Test Coverage Report ${status}
-
-**Coverage:** ${coveragePercent}%
-**Threshold:** ${threshold}%
-
-${parseFloat(coveragePercent) >= parseFloat(threshold)
-  ? '✅ Coverage meets the required threshold'
-  : '❌ Coverage is below the required threshold'}
-
-[View detailed coverage report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-`;
+                const body = `## Test Coverage Report ${status}\n\n**Coverage:** ${coveragePercent}%\n**Threshold:** ${threshold}%\n\n${resultMsg}\n\n[View detailed coverage report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
 
                 github.rest.issues.createComment({
                   issue_number: context.issue.number,
