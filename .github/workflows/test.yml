@@ -50,7 +50,6 @@ jobs:
 
       - name: Run integration tests
         run: |
-          cd scripts
           ./run-tests.sh --integration --verbose
         env:
           TK_TEST_MODE: "true"
