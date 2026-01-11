@@ -1,5 +1,40 @@
+# Temporary and test scripts (ignored from version control)
 setup.sh
 test.sh
+fix-dns.sh
+
+# Documentation that's moved to /docs
 CLI.md
 COMPATIBILITY-FIX.md
 IMPROVEMENTS.md
+TEST_SUITE_SUMMARY.md
+# Backup files
+*.backup
+*.backup.*
+*.bak
+*.old
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.*.sw[a-z]
+*.un~
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo

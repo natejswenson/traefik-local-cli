@@ -6,7 +6,13 @@ set -e
 
 # Get script and project directories
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Support test mode - use current directory if TK_TEST_MODE is set
+if [ "${TK_TEST_MODE:-}" = "true" ]; then
+    PROJECT_ROOT="$PWD"
+else
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
 
 # Source library functions
 source "${SCRIPT_DIR}/lib/tk-common.sh"
@@ -17,7 +23,9 @@ source "${SCRIPT_DIR}/lib/docker-generator.sh" 2>/dev/null || true
 VERSION="2.0.0"
 
 # Load configurations
-cd "$PROJECT_ROOT" || true
+if [ "${TK_TEST_MODE:-}" != "true" ]; then
+    cd "$PROJECT_ROOT" || true
+fi
 load_all_configs
 
 # Setup error handling

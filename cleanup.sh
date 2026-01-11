@@ -1,4 +1,20 @@
 #!/bin/bash
+#==============================================================================
+# Traefik Cleanup Script
+#==============================================================================
+# Purpose: Clean up Docker resources for Traefik development environment
+# Usage:   ./cleanup.sh
+#
+# This script will:
+#   - Stop and remove all containers
+#   - Remove Docker volumes
+#   - Remove Docker network
+#   - Optionally remove SSL certificates
+#   - Optionally remove .env file
+#
+# Warning: This is a destructive operation. Data in volumes will be lost.
+#==============================================================================
+
 set -e
 
 echo "🧹 Cleaning up Traefik development environment"

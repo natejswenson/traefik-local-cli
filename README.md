@@ -1,269 +1,298 @@
 # Traefik Scripts
 
-Automation scripts for managing your Traefik development environment.
+Automation scripts and CLI for managing Traefik-based local development environments.
 
-## Quick Start
+## 📁 Contents
 
-### Connect External Service (NEW! ⭐)
+```
+scripts/
+├── tk                      Main CLI executable (Traefik CLI)
+├── install.sh             Install tk CLI to PATH
+├── uninstall.sh           Remove tk CLI from PATH
+├── connect-service.sh     Auto-connect external services
+├── add-service.sh         Add new service to project
+├── cleanup.sh             Clean up Docker resources
+├── setup-dns.sh           Configure local DNS settings
+└── lib/                   Shared library modules
+    ├── tk-common.sh         Main library loader
+    ├── tk-logging.sh        Logging & output formatting
+    ├── tk-validation.sh     Input validation & security
+    ├── tk-docker.sh         Docker operations
+    ├── service-detector.sh  Service detection logic
+    └── docker-generator.sh  Dockerfile generation
+```
 
-The easiest way to add any service to Traefik:
+## 🚀 Quick Start
+
+### Install the CLI
 
 ```bash
-./connect-service.sh /path/to/your/service
+# From the scripts directory
+./install.sh
+
+# Reload your shell
+source ~/.zshrc  # or source ~/.bashrc
 ```
 
-That's it! Auto-detects everything and connects your service.
+### Use the CLI
 
-**Or use Claude Code:**
+```bash
+# Check available commands
+tk --help
+
+# Connect an external service
+tk connect /path/to/your/service
+
+# View service status
+tk status
+
+# View logs
+tk logs [service-name]
 ```
-/connect
+
+See [QUICKSTART.md](./QUICKSTART.md) for detailed usage examples.
+
+## 📜 Script Reference
+
+### 🔧 Installation & Setup
+
+#### `install.sh`
+Installs the `tk` CLI to your shell PATH by adding an alias to `~/.zshrc` or `~/.bashrc`.
+
+**Usage:**
+```bash
+./install.sh
 ```
 
-See [../QUICKSTART.md](../QUICKSTART.md) and [../docs/guides/service-auto-connect.md](../docs/guides/service-auto-connect.md) for details.
+**What it does:**
+- Makes `tk` executable
+- Adds alias to shell configuration
+- Creates backup of shell config
+- Provides instructions for reload
 
-## Scripts
+#### `uninstall.sh`
+Removes the `tk` CLI from your shell PATH.
 
-### connect-service.sh ⭐ NEW
-**Auto-connect services from local repositories**
+**Usage:**
+```bash
+./uninstall.sh
+```
 
-Automatically detects language, framework, port, dependencies and configures Traefik routing.
+### 🔌 Service Management
 
+#### `connect-service.sh` ⭐
+Auto-connects external services from local repositories to Traefik.
+
+**Features:**
+- Auto-detects language (Python, Node.js)
+- Auto-detects framework (FastAPI, Flask, Express, etc.)
+- Finds port and entry point automatically
+- Generates Dockerfile if needed
+- Configures Traefik routing
+- Starts service with HTTPS
+
+**Usage:**
 ```bash
 # Basic usage
 ./connect-service.sh /path/to/service
 
-# With options
-./connect-service.sh /path/to/service [name] [--port 9000] [--dry-run]
+# With custom name
+./connect-service.sh /path/to/service custom-name
 
-# Help
-./connect-service.sh --help
+# Dry run (preview only)
+./connect-service.sh /path/to/service --dry-run
+
+# Override detected port
+./connect-service.sh /path/to/service --port 9000
 ```
-
-**Features:**
-- Auto-detects Python (FastAPI/Flask/Django) and Node.js (Express/NestJS/Next.js)
-- Generates Dockerfile if needed
-- Configures dependencies (MongoDB, PostgreSQL, Redis)
-- Adds to docker-compose.yml
-- Starts service with Traefik routing
-- Dry run mode for safety
 
 **Supported:**
 - ✅ Python: FastAPI, Flask, Django
 - ✅ Node.js: Express, NestJS, Next.js, Koa
-- ✅ Auto-detects MongoDB, PostgreSQL, Redis
-- ✅ Generates or uses existing Dockerfile
-- ✅ Cross-platform (macOS/Linux)
+- ✅ Auto-detects: MongoDB, PostgreSQL, Redis
 
-### setup.sh
-**Initial environment setup**
+#### `add-service.sh`
+Adds a new service to the project from scratch.
 
-```bash
-./setup.sh
-```
-
-Sets up:
-- Traefik network
-- SSL certificates
-- Environment variables
-- Directory structure
-
-### add-service.sh
-**Manual service creation**
-
+**Usage:**
 ```bash
 ./add-service.sh <service-name> [port] [language]
 ```
 
-Creates a new service from scratch with templates.
+**Example:**
+```bash
+./add-service.sh my-api 8080 python
+```
 
-**Note:** For existing services, use `connect-service.sh` instead.
+### 🧹 Utilities
 
-### cleanup.sh
-**Clean up resources**
+#### `cleanup.sh`
+Cleans up Docker resources (containers, volumes, networks).
 
+**Usage:**
 ```bash
 ./cleanup.sh
 ```
 
-Removes:
-- Docker containers
-- Networks
-- Volumes
-- Build cache
+**Warning:** This removes all Docker resources. Use with caution.
 
-### test.sh
-**Test all services**
+#### `setup-dns.sh`
+Configures local DNS settings for `*.localhost` domains.
+
+**Usage:**
+```bash
+./setup-dns.sh
+```
+
+### 🛠️ Main CLI: `tk`
+
+The unified Traefik CLI provides all functionality in one command.
+
+**Available Commands:**
+- `tk connect <path>` - Connect external service
+- `tk add <name>` - Add new service
+- `tk status` - Show service status
+- `tk logs [service]` - View logs
+- `tk restart [service]` - Restart service(s)
+- `tk stop [service]` - Stop service(s)
+- `tk start [service]` - Start service(s)
+- `tk clean` - Clean up resources
+- `tk help` - Show help
+
+**Options:**
+- `--dry-run` - Preview changes without executing
+- `--verbose` - Enable verbose output
+- `--help` - Show help for command
+
+## 📚 Library Modules
+
+### `lib/tk-common.sh`
+Main library entry point that loads all modules.
+
+**Exports:**
+- Configuration loading (`.tkrc` files)
+- Error handling setup
+- Common utilities
+
+### `lib/tk-logging.sh`
+Logging and output formatting functions.
+
+**Functions:**
+- `log()`, `log_debug()`, `log_info()`, `log_warn()`, `log_error()`, `log_fatal()`
+- `print_header()`, `print_success()`, `print_error()`, `print_status()`
+- `spinner()` - Progress indicator
+
+### `lib/tk-validation.sh`
+Input validation and security checking.
+
+**Functions:**
+- `validate_service_name()`, `validate_domain()`, `validate_port()`
+- `validate_docker()`, `validate_docker_compose()`
+- `sanitize_env_value()`, `validate_env_name()`
+
+### `lib/tk-docker.sh`
+Docker and Docker Compose operations.
+
+**Functions:**
+- `docker_compose_cmd()` - Wrapper for docker compose
+- `service_exists()`, `get_service_domain()`, `list_services()`
+- `find_project_root()` - Locate project root
+
+### `lib/service-detector.sh`
+Service language and framework detection.
+
+**Capabilities:**
+- Detects Python (FastAPI, Flask, Django)
+- Detects Node.js (Express, NestJS, Next.js)
+- Finds entry points and ports
+- Identifies dependencies
+
+### `lib/docker-generator.sh`
+Generates Dockerfiles and docker-compose configurations.
+
+**Features:**
+- Language-specific Dockerfile templates
+- Docker Compose service blocks
+- Traefik label generation
+- Health check configuration
+
+## ⚙️ Configuration
+
+### Project Config (`.tkrc`)
+Create a `.tkrc` file in your project root for custom configuration:
 
 ```bash
-./test.sh
+# Domain suffix for services
+DEFAULT_DOMAIN_SUFFIX="home.local"
+
+# Auto-update /etc/hosts
+AUTO_UPDATE_HOSTS="true"
+
+# Confirm destructive operations
+CONFIRM_DESTRUCTIVE="true"
+
+# Docker network name
+DOCKER_NETWORK="traefik"
+
+# Default service port
+DEFAULT_SERVICE_PORT="8000"
 ```
 
-Checks:
-- Service health endpoints
-- Traefik routing
-- SSL certificates
-- Dependencies
+### User Config (`~/.tkrc`)
+Create a global config in your home directory for user-wide settings.
 
-## Library Functions
+## 🔒 Security Notes
 
-### lib/service-detector.sh
-**Service auto-detection library**
+- Scripts validate all inputs before execution
+- Docker security best practices enforced
+- Privileged mode and host network warnings
+- Environment variable sanitization
+- Path traversal attack prevention
 
-Functions:
-- `detect_language()` - Detect Python, Node.js, Go, Rust
-- `detect_python_service()` - Identify FastAPI, Flask, Django
-- `detect_node_service()` - Identify Express, NestJS, Next.js
-- `extract_port_python()` - Find Python service port
-- `extract_port_node()` - Find Node.js service port
-- `find_python_entrypoint()` - Locate main.py, app.py, etc.
-- `find_node_entrypoint()` - Locate index.js, app.js, etc.
-- `detect_mongodb_dependency()` - Check for MongoDB usage
-- `detect_postgres_dependency()` - Check for PostgreSQL usage
-- `detect_redis_dependency()` - Check for Redis usage
-- `generate_service_metadata()` - Generate complete metadata JSON
+## 🐛 Troubleshooting
 
-### lib/docker-generator.sh
-**Docker configuration generator**
-
-Functions:
-- `generate_dockerfile()` - Create framework-specific Dockerfile
-- `generate_dockerfile_fastapi()` - FastAPI Dockerfile
-- `generate_dockerfile_flask()` - Flask Dockerfile
-- `generate_dockerfile_django()` - Django Dockerfile
-- `generate_dockerfile_express()` - Express Dockerfile
-- `generate_dockerfile_nestjs()` - NestJS Dockerfile
-- `generate_dockerfile_nextjs()` - Next.js Dockerfile
-- `generate_dockerignore_python()` - Python .dockerignore
-- `generate_dockerignore_node()` - Node.js .dockerignore
-- `generate_compose_service()` - docker-compose service definition
-
-## Usage Examples
-
-### Example 1: Connect FastAPI Service
-
+### tk command not found
 ```bash
-# You have a FastAPI project at ~/projects/todo-api
-./connect-service.sh ~/projects/todo-api
+# Reload your shell
+source ~/.zshrc  # or source ~/.bashrc
 
-# Output:
-# 🔍 Analyzing service...
-#   Language: python
-#   Framework: fastapi
-#   Port: 8000
-# 🐳 Generating Dockerfile...
-# 📦 Adding to docker-compose.yml...
-# 🚀 Starting service...
-# ✅ SUCCESS!
-# 🌐 https://todo-api.localhost
+# Or reinstall
+./install.sh
 ```
 
-### Example 2: Connect Express Service
-
+### Permission denied
 ```bash
-./connect-service.sh ~/projects/user-service users-api
-# Now at: https://users-api.localhost
-```
-
-### Example 3: Dry Run First
-
-```bash
-# Preview what will happen
-./connect-service.sh ~/projects/analytics --dry-run
-
-# Review output, then connect for real
-./connect-service.sh ~/projects/analytics
-```
-
-### Example 4: Override Port
-
-```bash
-./connect-service.sh ~/projects/metrics --port 9090
-```
-
-### Example 5: Using in Other Scripts
-
-```bash
-#!/bin/bash
-source ./lib/service-detector.sh
-source ./lib/docker-generator.sh
-
-# Detect service metadata
-metadata=$(generate_service_metadata "/path/to/service" "my-service")
-echo "$metadata"
-
-# Generate Dockerfile
-dockerfile=$(generate_dockerfile "python" "fastapi" "8000" "main.py")
-echo "$dockerfile" > /path/to/service/Dockerfile
-```
-
-## Claude Code Integration
-
-All scripts work seamlessly with Claude Code:
-
-```
-User: /connect
-Claude: Guides through service connection
-
-User: connect my FastAPI service at ~/projects/api
-Claude: Runs ./connect-service.sh ~/projects/api
-
-User: show me the logs
-Claude: Runs docker compose logs -f api
-```
-
-## Requirements
-
-- Docker & Docker Compose
-- Bash 4.0+
-- Python 3 (for path resolution)
-- curl (for health checks)
-
-**macOS users:** All scripts are BSD-compatible.
-
-## Troubleshooting
-
-### Script Permission Denied
-
-```bash
-chmod +x *.sh
+# Make scripts executable
+chmod +x *.sh tk
 chmod +x lib/*.sh
 ```
 
-### Service Won't Connect
-
-1. Check logs: `docker compose logs -f service-name`
-2. Verify service has `/health` endpoint
-3. Try dry run: `./connect-service.sh /path --dry-run`
-4. Check Traefik dashboard: `https://traefik.localhost`
-
-### Port Already in Use
-
+### Docker errors
 ```bash
-# Override with different port
-./connect-service.sh /path/to/service --port 9000
+# Verify Docker is running
+docker info
+
+# Verify Docker Compose is available
+docker compose version
 ```
 
-### Language Not Detected
+## 📖 Documentation
 
-Ensure your service has:
-- Python: `requirements.txt` or `.py` files
-- Node.js: `package.json` or `.js` files
+- [QUICKSTART.md](./QUICKSTART.md) - Quick start guide
+- [lib/README.md](./lib/README.md) - Library module documentation
+- [../docs/tk-cli/](../docs/tk-cli/) - Extended documentation
 
-## Contributing
+## 🤝 Contributing
 
-Want to add support for more languages/frameworks?
+When adding new scripts or functions:
 
-1. Add detection to `lib/service-detector.sh`
-2. Add Dockerfile generator to `lib/docker-generator.sh`
-3. Test with real services
-4. Submit PR!
+1. Follow existing naming conventions
+2. Add comprehensive help text
+3. Validate all inputs
+4. Use library functions from `lib/`
+5. Document in this README
+6. Test in dry-run mode first
 
-## See Also
+## 📝 License
 
-- [QUICKSTART.md](../QUICKSTART.md) - Quick reference
-- [Service Auto-Connect Guide](../docs/guides/service-auto-connect.md) - Complete documentation
-- [CLAUDE.md](../CLAUDE.md) - Project guide for AI assistants
-
----
-
-**Need help?** Ask Claude with `/connect` or check the [documentation](../docs/guides/service-auto-connect.md).
+Part of the Traefik local development environment.
