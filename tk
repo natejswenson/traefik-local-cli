@@ -1,0 +1,484 @@
+#!/bin/bash
+# Traefik CLI - Unified CLI tool for managing Traefik services
+# Usage: tk <command> [options]
+
+set -e
+
+# Get script and project directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Source library functions
+source "${SCRIPT_DIR}/lib/tk-common.sh"
+source "${SCRIPT_DIR}/lib/service-detector.sh" 2>/dev/null || true
+source "${SCRIPT_DIR}/lib/docker-generator.sh" 2>/dev/null || true
+
+# Version
+VERSION="2.0.0"
+
+# Load configurations
+cd "$PROJECT_ROOT" || true
+load_all_configs
+
+# Setup error handling
+setup_error_handling
+
+# Initialize logging
+log_debug "TK CLI v${VERSION} started"
+log_debug "Script dir: $SCRIPT_DIR"
+log_debug "Project root: $PROJECT_ROOT"
+
+# Help message
+show_help() {
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║               Traefik CLI (tk) v${VERSION}                    ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  tk <command> [options]"
+    echo ""
+    echo -e "${YELLOW}Commands:${NC}"
+    echo -e "  ${GREEN}add <path> [name]${NC}     Add service to Traefik"
+    echo -e "  ${GREEN}remove <name>${NC}         Remove service from Traefik"
+    echo -e "  ${GREEN}start [name]${NC}          Start all services or specific service"
+    echo -e "  ${GREEN}stop [name]${NC}           Stop all services or specific service"
+    echo -e "  ${GREEN}restart [name]${NC}        Restart all services or specific service"
+    echo -e "  ${GREEN}logs [name]${NC}           View logs for all or specific service"
+    echo -e "  ${GREEN}list${NC}                  List all services"
+    echo -e "  ${GREEN}status${NC}                Show service status"
+    echo -e "  ${GREEN}setup${NC}                 Initial Traefik setup"
+    echo -e "  ${GREEN}cleanup${NC}               Clean up Traefik environment"
+    echo -e "  ${GREEN}sync-hosts${NC}            Sync all services to /etc/hosts"
+    echo -e "  ${GREEN}help${NC}                  Show this help message"
+    echo -e "  ${GREEN}version${NC}               Show version"
+    echo ""
+    echo -e "${YELLOW}Examples:${NC}"
+    echo -e "  ${BLUE}# Add a service from any directory${NC}"
+    echo "  tk add /path/to/my-api"
+    echo ""
+    echo -e "  ${BLUE}# Add service with custom name${NC}"
+    echo "  tk add /path/to/my-api custom-name"
+    echo ""
+    echo -e "  ${BLUE}# Remove a service${NC}"
+    echo "  tk remove custom-name"
+    echo ""
+    echo -e "  ${BLUE}# Start all services${NC}"
+    echo "  tk start"
+    echo ""
+    echo -e "  ${BLUE}# Start specific service${NC}"
+    echo "  tk start python-api"
+    echo ""
+    echo -e "  ${BLUE}# View logs${NC}"
+    echo "  tk logs python-api"
+    echo ""
+    echo -e "  ${BLUE}# List all services${NC}"
+    echo "  tk list"
+    echo ""
+    echo -e "  ${BLUE}# Sync all services to /etc/hosts${NC}"
+    echo "  tk sync-hosts"
+    echo ""
+}
+
+# Add service command
+cmd_add() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}Error: Service path is required${NC}"
+        echo "Usage: tk add <path> [name] [options]"
+        exit 1
+    fi
+
+    # Forward all arguments to connect-service.sh
+    "${SCRIPT_DIR}/connect-service.sh" "$@"
+}
+
+# Remove service command
+cmd_remove() {
+    if [ -z "$1" ]; then
+        log_error "Service name is required"
+        echo "Usage: tk remove <service-name>"
+        exit 1
+    fi
+
+    local service_name="$1"
+
+    # Validate service name
+    if ! validate_service_name "$service_name"; then
+        exit 1
+    fi
+
+    print_header "Removing Service from Traefik"
+    echo -e "${YELLOW}Service: ${service_name}${NC}"
+    echo ""
+
+    cd "$PROJECT_ROOT" || log_fatal "Cannot change to project root: $PROJECT_ROOT"
+
+    # Check if service exists
+    if ! service_exists "$service_name"; then
+        log_error "Service '$service_name' not found in docker-compose.yml"
+        exit 1
+    fi
+
+    # Confirm destructive operation
+    if ! confirm_destructive "Remove service '$service_name' from Traefik"; then
+        exit 0
+    fi
+
+    # Backup docker-compose.yml
+    local backup_path=$(backup_file "docker-compose.yml")
+    if [ -z "$backup_path" ]; then
+        log_fatal "Failed to create backup"
+    fi
+    print_status "success" "Backed up docker-compose.yml"
+
+    # Remove service from docker-compose.yml using awk
+    log_info "Removing from docker-compose.yml..."
+
+    awk -v service="$service_name" '
+    BEGIN {
+        skip_mode = 0
+        comment_buffer[0] = ""
+        comment_count = 0
+    }
+
+    # When we encounter a comment line at service level
+    /^  #/ {
+        if (skip_mode) {
+            # Still in skip mode, check if this is a comment header for the next service
+            # If it starts a new comment block (----), we are at the next service header
+            if (/^  #----/) {
+                skip_mode = 0
+                comment_count = 0
+            }
+        }
+
+        if (!skip_mode) {
+            # Buffer comment lines
+            comment_buffer[comment_count] = $0
+            comment_count++
+        }
+        next
+    }
+
+    # When we encounter a service definition line
+    /^  [a-zA-Z0-9_-]+:/ {
+        # Check if this is the service to remove
+        if ($0 ~ "^  " service ":") {
+            # Discard buffered comments and enter skip mode
+            comment_count = 0
+            skip_mode = 1
+            next
+        } else {
+            # This is a different service - output buffered comments first
+            for (i = 0; i < comment_count; i++) {
+                print comment_buffer[i]
+            }
+            comment_count = 0
+            skip_mode = 0
+            print
+            next
+        }
+    }
+
+    # Handle all other lines
+    {
+        if (skip_mode) {
+            # Skip lines that are part of the removed service
+            # Check if we hit a major section (networks, volumes, etc)
+            if (/^[a-zA-Z]/) {
+                skip_mode = 0
+                print
+            }
+            # Otherwise skip this line
+        } else {
+            # Not in skip mode - output the line
+            print
+        }
+    }
+    ' docker-compose.yml > docker-compose.yml.tmp
+
+    # Replace the original file
+    mv docker-compose.yml.tmp docker-compose.yml
+    print_status "success" "Removed from docker-compose.yml"
+
+    # Remove from /etc/hosts if present
+    log_info "Removing from /etc/hosts..."
+
+    # Extract the actual domain from docker-compose.yml before we delete the service
+    local domain=$(get_service_domain "$service_name" "$backup_path")
+
+    if [ -n "$domain" ]; then
+        if validate_domain "$domain"; then
+            if grep -q "127.0.0.1[[:space:]]${domain}" /etc/hosts 2>/dev/null; then
+                if sudo sed -i.bak "/127\.0\.0\.1[[:space:]]${domain}/d" /etc/hosts; then
+                    print_status "success" "Removed ${domain} from /etc/hosts"
+                    log_info "Removed ${domain} from /etc/hosts"
+                else
+                    print_status "warn" "Failed to remove ${domain} from /etc/hosts"
+                fi
+            else
+                print_status "warn" "${domain} not found in /etc/hosts"
+            fi
+        fi
+    else
+        print_status "warn" "Could not extract domain from service configuration"
+    fi
+
+    # Stop the entire stack
+    log_info "Stopping all services..."
+    if ! docker_compose_cmd down; then
+        log_error "Failed to stop services"
+        # Try to restore backup
+        if [ -f "$backup_path" ]; then
+            restore_file "$backup_path" "docker-compose.yml"
+            print_error "Failed to stop services. Backup restored."
+        fi
+        exit 1
+    fi
+
+    # Start the stack again
+    log_info "Starting services..."
+    if ! docker_compose_cmd up -d; then
+        log_error "Failed to start services"
+        exit 1
+    fi
+
+    print_success "Service '${service_name}' removed successfully\nAll remaining services restarted"
+
+    echo -e "${YELLOW}Note: Service directory was NOT deleted.${NC}"
+    echo -e "To restore, you can add it back with: ${CYAN}tk add <path>${NC}"
+    echo ""
+}
+
+# Start services command
+cmd_start() {
+    cd "$PROJECT_ROOT"
+
+    if [ -z "$1" ]; then
+        echo -e "${BLUE}🚀 Starting all services...${NC}"
+        docker compose up -d
+    else
+        echo -e "${BLUE}🚀 Starting service: $1${NC}"
+        docker compose up -d "$1"
+    fi
+
+    echo -e "${GREEN}✓ Done${NC}"
+}
+
+# Stop services command
+cmd_stop() {
+    cd "$PROJECT_ROOT"
+
+    if [ -z "$1" ]; then
+        echo -e "${YELLOW}🛑 Stopping all services...${NC}"
+        docker compose stop
+    else
+        echo -e "${YELLOW}🛑 Stopping service: $1${NC}"
+        docker compose stop "$1"
+    fi
+
+    echo -e "${GREEN}✓ Done${NC}"
+}
+
+# Restart services command
+cmd_restart() {
+    cd "$PROJECT_ROOT"
+
+    if [ -z "$1" ]; then
+        echo -e "${BLUE}🔄 Restarting all services...${NC}"
+        docker compose restart
+    else
+        echo -e "${BLUE}🔄 Restarting service: $1${NC}"
+        docker compose restart "$1"
+    fi
+
+    echo -e "${GREEN}✓ Done${NC}"
+}
+
+# Logs command
+cmd_logs() {
+    cd "$PROJECT_ROOT"
+
+    if [ -z "$1" ]; then
+        echo -e "${BLUE}📋 Showing logs for all services...${NC}"
+        docker compose logs -f
+    else
+        echo -e "${BLUE}📋 Showing logs for: $1${NC}"
+        docker compose logs -f "$1"
+    fi
+}
+
+# List services command
+cmd_list() {
+    cd "$PROJECT_ROOT"
+
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║  Traefik Services                                          ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Extract service names from docker-compose.yml
+    echo -e "${YELLOW}Services in docker-compose.yml:${NC}"
+    sed -n '/^services:/,/^[a-z]/p' docker-compose.yml | \
+        grep "^  [a-z][a-z0-9_-]*:" | \
+        sed 's/://g' | \
+        sed 's/^  /  • /'
+    echo ""
+}
+
+# Status command
+cmd_status() {
+    cd "$PROJECT_ROOT"
+
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║  Service Status                                            ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    docker compose ps
+    echo ""
+
+    # Show URLs
+    echo -e "${CYAN}📍 Service URLs:${NC}"
+    echo -e "  • Traefik Dashboard: ${GREEN}https://traefik.home.local${NC}"
+
+    # Extract service names and show their URLs
+    sed -n '/^services:/,/^[a-z]/p' docker-compose.yml | \
+        grep "^  [a-z][a-z0-9_-]*:" | \
+        sed 's/://g' | \
+        sed 's/^  //' | \
+        while IFS= read -r service; do
+            if [ "$service" != "traefik" ] && [ "$service" != "mongodb" ] && [ "$service" != "postgres" ] && [ "$service" != "redis" ]; then
+                echo -e "  • ${service}: ${GREEN}https://${service}.home.local${NC}"
+            fi
+        done
+    echo ""
+}
+
+# Setup command
+cmd_setup() {
+    "${SCRIPT_DIR}/setup.sh"
+}
+
+# Cleanup command
+cmd_cleanup() {
+    "${SCRIPT_DIR}/cleanup.sh"
+}
+
+# Show version
+cmd_version() {
+    echo -e "${CYAN}Traefik CLI (tk) v${VERSION}${NC}"
+}
+
+# Sync all services to /etc/hosts
+cmd_sync_hosts() {
+    cd "$PROJECT_ROOT"
+
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║  Syncing Services to /etc/hosts                           ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Extract all service domains from docker-compose.yml
+    local services=$(grep -E "traefik\.http\.routers\..+\.rule.*Host" docker-compose.yml | \
+                    sed -n "s/.*Host(\`\([^']*\)\`).*/\1/p")
+
+    if [ -z "$services" ]; then
+        echo -e "${YELLOW}No services found in docker-compose.yml${NC}"
+        exit 0
+    fi
+
+    echo -e "${BLUE}Found services:${NC}"
+    echo "$services" | while IFS= read -r domain; do
+        echo -e "  • ${domain}"
+    done
+    echo ""
+
+    echo -e "${BLUE}Updating /etc/hosts...${NC}"
+    local added=0
+    local skipped=0
+
+    echo "$services" | while IFS= read -r domain; do
+        if [ -n "$domain" ]; then
+            if ! grep -q "127.0.0.1[[:space:]]${domain}" /etc/hosts 2>/dev/null; then
+                echo "127.0.0.1 ${domain}" | sudo tee -a /etc/hosts >/dev/null
+                echo -e "${GREEN}  ✓ Added ${domain}${NC}"
+                added=$((added + 1))
+            else
+                echo -e "${YELLOW}  - ${domain} (already exists)${NC}"
+                skipped=$((skipped + 1))
+            fi
+        fi
+    done
+
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║                     SYNC COMPLETE!                         ║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${CYAN}All service domains are now in /etc/hosts${NC}"
+    echo ""
+}
+
+# Main command router
+main() {
+    # Handle no arguments
+    if [ $# -eq 0 ]; then
+        show_help
+        exit 0
+    fi
+
+    # Parse command
+    COMMAND="$1"
+    shift
+
+    case "$COMMAND" in
+        add)
+            cmd_add "$@"
+            ;;
+        remove|rm)
+            cmd_remove "$@"
+            ;;
+        start|up)
+            cmd_start "$@"
+            ;;
+        stop|down)
+            cmd_stop "$@"
+            ;;
+        restart)
+            cmd_restart "$@"
+            ;;
+        logs)
+            cmd_logs "$@"
+            ;;
+        list|ls)
+            cmd_list
+            ;;
+        status|ps)
+            cmd_status
+            ;;
+        setup)
+            cmd_setup
+            ;;
+        cleanup|clean)
+            cmd_cleanup
+            ;;
+        sync-hosts)
+            cmd_sync_hosts
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        version|--version|-v)
+            cmd_version
+            ;;
+        *)
+            echo -e "${RED}Error: Unknown command: $COMMAND${NC}"
+            echo ""
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# Run main
+main "$@"
