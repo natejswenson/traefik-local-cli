@@ -146,22 +146,31 @@ jobs:
 
       - name: Run ShellCheck on all scripts
         run: |
-          find . -name "*.sh" -type f -exec shellcheck -x {} +
-          shellcheck tk
+          echo "Running ShellCheck on .sh files..."
+          find . -path ./.git -prune -o -name "*.sh" -type f -print0 | xargs -0 shellcheck -x
+
+          echo "Running ShellCheck on tk..."
+          shellcheck -x tk
+
+          echo "✓ ShellCheck passed"
 
       - name: Check script permissions
         run: |
           # All .sh files should be executable
-          find . -name "*.sh" -type f ! -executable -print | while read -r file; do
-            echo "Error: $file is not executable"
+          non_executable=$(find . -name "*.sh" -type f ! -executable -print)
+          if [ -n "$non_executable" ]; then
+            echo "❌ Error: The following .sh files are not executable:"
+            echo "$non_executable"
             exit 1
-          done
+          fi
 
           # tk file should be executable
           if [ ! -x tk ]; then
-            echo "Error: tk is not executable"
+            echo "❌ Error: tk is not executable"
             exit 1
           fi
+
+          echo "✓ All scripts have correct permissions"
 
   security:
     name: Security Scan
@@ -175,10 +184,22 @@ jobs:
         run: |
           # Check for common security issues in shell scripts
           echo "Checking for hardcoded secrets..."
-          ! grep -r -E "(password|secret|token|api_key)\s*=" . || exit 1
+          if grep -r -E "(password|secret|token|api_key)\s*=" . --exclude-dir=.git 2>/dev/null; then
+            echo "❌ Found hardcoded secrets"
+            exit 1
+          fi
 
           echo "Checking for dangerous commands..."
-          ! grep -r -E "rm -rf /" . || exit 1
+          # Only flag truly dangerous patterns, excluding safe Docker and test cleanup
+          if grep -r -E "rm\s+-rf\s+/(\s|;|$|\*)" . \
+            --exclude-dir=.git \
+            --exclude-dir=tests \
+            --exclude="*.yml" \
+            --exclude="*.yaml" \
+            2>/dev/null | grep -v "/var/lib/apt" | grep -v "/tmp/" | grep -v "/usr/"; then
+            echo "❌ Found dangerous rm commands"
+            exit 1
+          fi
 
           echo "✓ Security scan passed"
 
