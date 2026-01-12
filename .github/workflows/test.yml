@@ -2,7 +2,7 @@ name: Test Suite
 
 on:
   push:
-    branches: [ main, develop, nswenson/refactor ]
+    branches: [ develop ]
     paths:
       - '.'
       - '.github/workflows/test.yml'
