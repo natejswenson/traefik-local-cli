@@ -121,6 +121,43 @@ dry_run_execute() {
 }
 
 #----------------------------------------------------
+# BACKUP FUNCTIONS
+#----------------------------------------------------
+
+backup_file() {
+    local file="$1"
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_path="${BACKUP_DIR}/${file}.backup.${timestamp}"
+
+    # Create backup directory if it doesn't exist
+    mkdir -p "$BACKUP_DIR"
+
+    # Copy file to backup location
+    if cp "$file" "$backup_path"; then
+        echo "$backup_path"
+        return 0
+    else
+        return 1
+    fi
+}
+
+restore_file() {
+    local backup_path="$1"
+    local target_file="$2"
+
+    if [ ! -f "$backup_path" ]; then
+        log_error "Backup file not found: $backup_path"
+        return 1
+    fi
+
+    if cp "$backup_path" "$target_file"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+#----------------------------------------------------
 # ERROR HANDLING
 #----------------------------------------------------
 
@@ -150,5 +187,6 @@ setup_error_handling() {
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
     export -f load_config load_all_configs
     export -f confirm confirm_destructive is_dry_run dry_run_execute
+    export -f backup_file restore_file
     export -f error_trap exit_trap setup_error_handling
 fi
