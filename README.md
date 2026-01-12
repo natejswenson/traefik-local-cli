@@ -2,6 +2,8 @@
 
 Automation scripts and CLI for managing Traefik-based local development environments.
 
+> **🔄 CI/CD Workflow:** This project uses an automated `develop → main` workflow. All changes are tested on the `develop` branch and automatically merged to `main` when tests pass. See [.github/WORKFLOW.md](.github/WORKFLOW.md) for details.
+
 ## 📁 Contents
 
 ```
