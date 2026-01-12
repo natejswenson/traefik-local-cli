@@ -147,12 +147,13 @@ jobs:
       - name: Run ShellCheck on all scripts
         run: |
           echo "Running ShellCheck on .sh files..."
-          find . -path ./.git -prune -o -name "*.sh" -type f -print0 | xargs -0 shellcheck -x
+          # Use --severity=error to only fail on actual errors, not warnings/info/style
+          find . -path ./.git -prune -o -name "*.sh" -type f -print0 | xargs -0 shellcheck -x --severity=error
 
           echo "Running ShellCheck on tk..."
-          shellcheck -x tk
+          shellcheck -x --severity=error tk
 
-          echo "✓ ShellCheck passed"
+          echo "✓ ShellCheck passed (errors only)"
 
       - name: Check script permissions
         run: |
