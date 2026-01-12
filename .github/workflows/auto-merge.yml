@@ -23,7 +23,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+
+      - name: Fetch all branches
+        run: |
+          git fetch origin develop:develop
+          git fetch origin main:main
 
       - name: Check if PR already exists
         id: check_pr
@@ -49,32 +55,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Get the latest commit message from develop
-          COMMIT_MSG=$(git log -1 --pretty=%B origin/develop)
+          COMMIT_MSG=$(git log -1 --pretty=%B develop)
 
           # Create PR with auto-generated body
           PR_NUMBER=$(gh pr create \
             --title "Auto-merge: Develop to Main" \
-            --body "$(cat <<'EOF'
-          ## 🤖 Automated Merge from Develop
+            --body "$(cat <<EOF
+## 🤖 Automated Merge from Develop
 
-          This PR was automatically created after all tests passed on the develop branch.
+This PR was automatically created after all tests passed on the develop branch.
 
-          ### ✅ Test Results
-          - All unit tests passed
-          - All integration tests passed
-          - Linting passed
-          - Security scan passed
+### ✅ Test Results
+- All unit tests passed
+- All integration tests passed
+- Linting passed
+- Security scan passed
 
-          ### 📝 Latest Commit
-          $COMMIT_MSG
+### 📝 Latest Commit
+${COMMIT_MSG}
 
-          ### 🔗 Workflow Run
-          https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
+### 🔗 Workflow Run
+https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
 
-          ---
-          *This PR will be automatically merged if all checks pass.*
-          EOF
-          )" \
+---
+*This PR will be automatically merged if all checks pass.*
+EOF
+)" \
             --base main \
             --head develop \
             --label "automated" \
