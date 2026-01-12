@@ -236,13 +236,21 @@ fi
 if [ "$SKIP_CREATE" = false ]; then
     echo -e "${BLUE}→ Creating pull request...${NC}"
 
-    PR_NUMBER=$(gh pr create \
+    # Create PR and capture the URL
+    PR_URL=$(gh pr create \
         --base main \
         --head develop \
         --title "$PR_TITLE" \
-        --body "$PR_BODY" \
-        --label "release" \
-        | grep -o '[0-9]\+' | head -1)
+        --body "$PR_BODY" 2>&1)
+
+    # Extract PR number from URL (e.g., https://github.com/user/repo/pull/123)
+    PR_NUMBER=$(echo "$PR_URL" | grep -o '/pull/[0-9]\+' | grep -o '[0-9]\+')
+
+    if [ -z "$PR_NUMBER" ]; then
+        echo -e "${RED}✗ Failed to create PR${NC}"
+        echo "$PR_URL"
+        exit 1
+    fi
 
     echo -e "${GREEN}✓ Created PR #$PR_NUMBER${NC}"
     echo ""
