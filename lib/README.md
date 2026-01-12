@@ -42,7 +42,6 @@ Main entry point that loads all other modules. Sources libraries in dependency o
 - `service_exists()`, `get_service_domain()`, `list_services()`
 - `find_project_root()` - Locate traefik project root
 
-
 ### service-detector.sh
 Auto-detection of service language, framework, and configuration.
 
