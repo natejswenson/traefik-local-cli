@@ -3,13 +3,8 @@ name: Test Suite
 on:
   push:
     branches: [ develop ]
-    paths:
-      - '.'
-      - '.github/workflows/test.yml'
   pull_request:
     branches: [ main, develop ]
-    paths:
-      - '.'
   workflow_dispatch:
 
 env:
