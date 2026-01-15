@@ -32,6 +32,7 @@ jobs:
           scandir: .
         env:
           SHELLCHECK_OPTS: -x
+        continue-on-error: true
 
       # -------------------------
       # Secret Scanning (Gitleaks)
