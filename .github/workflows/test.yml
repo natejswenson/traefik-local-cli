@@ -176,28 +176,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run security scan
-        run: |
-          # Check for common security issues in shell scripts
-          echo "Checking for hardcoded secrets..."
-          if grep -r -E "(password|secret|token|api_key)\s*=" . --exclude-dir=.git 2>/dev/null; then
-            echo "❌ Found hardcoded secrets"
-            exit 1
-          fi
-
-          echo "Checking for dangerous commands..."
-          # Only flag truly dangerous patterns, excluding safe Docker and test cleanup
-          if grep -r -E "rm\s+-rf\s+/(\s|;|$|\*)" . \
-            --exclude-dir=.git \
-            --exclude-dir=tests \
-            --exclude="*.yml" \
-            --exclude="*.yaml" \
-            2>/dev/null | grep -v "/var/lib/apt" | grep -v "/tmp/" | grep -v "/usr/"; then
-            echo "❌ Found dangerous rm commands"
-            exit 1
-          fi
-
-          echo "✓ Security scan passed"
+      - name: Run security scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          fail: true
 
   summary:
     name: Test Summary
