@@ -22,6 +22,11 @@ export KEEP_BACKUPS="${KEEP_BACKUPS:-5}"
 export DEFAULT_SERVICE_PORT="${DEFAULT_SERVICE_PORT:-8000}"
 export DEFAULT_HEALTH_CHECK_PATH="${DEFAULT_HEALTH_CHECK_PATH:-/health}"
 
+# Security configuration
+export STRICT_DOCKER_SECURITY="${STRICT_DOCKER_SECURITY:-true}"
+export ALLOW_UNTRUSTED_REGISTRIES="${ALLOW_UNTRUSTED_REGISTRIES:-false}"
+export SECURITY_MODE="${SECURITY_MODE:-normal}"
+
 #----------------------------------------------------
 # GLOBAL FLAGS
 #----------------------------------------------------
@@ -70,6 +75,7 @@ load_all_configs() {
 # Load libraries in dependency order
 source "$LIB_DIR/tk-logging.sh"
 source "$LIB_DIR/tk-validation.sh"
+source "$LIB_DIR/tk-security.sh"
 source "$LIB_DIR/tk-docker.sh"
 
 #----------------------------------------------------
