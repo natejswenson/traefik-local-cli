@@ -12,10 +12,13 @@ setup() {
     run validate_service_name "my-service"
     assert_success
 
-    run validate_service_name "api_v2"
+    run validate_service_name "api-v2"
     assert_success
 
-    run validate_service_name "Service123"
+    run validate_service_name "service123"
+    assert_success
+
+    run validate_service_name "a"
     assert_success
 }
 
@@ -33,10 +36,58 @@ setup() {
 
     run validate_service_name "service.name"
     assert_failure
+
+    # Uppercase not allowed
+    run validate_service_name "MyService"
+    assert_failure
+
+    run validate_service_name "Service123"
+    assert_failure
+
+    # Underscores not allowed
+    run validate_service_name "api_v2"
+    assert_failure
+
+    run validate_service_name "my_service"
+    assert_failure
+
+    # Must start with letter
+    run validate_service_name "123service"
+    assert_failure
+
+    run validate_service_name "-myservice"
+    assert_failure
 }
 
-@test "validate_service_name rejects names over 50 characters" {
-    run validate_service_name "this-is-a-very-long-service-name-that-exceeds-fifty-characters-limit"
+@test "validate_service_name rejects names over 63 characters" {
+    # Max is 63 characters per DNS spec
+    local valid_63=$(printf 'a%.0s' {1..63})
+    run validate_service_name "$valid_63"
+    assert_success
+
+    # 64 characters should fail
+    local invalid_64=$(printf 'a%.0s' {1..64})
+    run validate_service_name "$invalid_64"
+    assert_failure
+}
+
+@test "validate_service_name rejects reserved names" {
+    run validate_service_name "traefik"
+    assert_failure
+
+    run validate_service_name "mongodb"
+    assert_failure
+
+    run validate_service_name "postgres"
+    assert_failure
+
+    run validate_service_name "redis"
+    assert_failure
+
+    run validate_service_name "localhost"
+    assert_failure
+
+    run validate_service_name "docker"
     assert_failure
 }
 

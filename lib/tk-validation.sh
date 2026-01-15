@@ -16,9 +16,6 @@ readonly VALID_PORT_REGEX='^[0-9]+$'
 readonly VALID_DOMAIN_REGEX='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'
 readonly MAX_PATH_LENGTH=4096
 
-# Reserved service names
-readonly RESERVED_NAMES=("traefik" "mongodb" "postgres" "redis" "localhost" "docker" "host" "mysql" "nginx")
-
 #----------------------------------------------------
 # INPUT VALIDATION
 #----------------------------------------------------
@@ -46,7 +43,8 @@ validate_service_name() {
     fi
 
     # Check for reserved names
-    for reserved in "${RESERVED_NAMES[@]}"; do
+    local reserved_list=("traefik" "mongodb" "postgres" "redis" "localhost" "docker" "host" "mysql" "nginx")
+    for reserved in "${reserved_list[@]}"; do
         if [[ "$name" == "$reserved" ]]; then
             log_error "Service name '$name' is reserved and cannot be used"
             return 1
