@@ -1,0 +1,233 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    # Run security scan daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  shellcheck:
+    name: ShellCheck Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          persist-credentials: false
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38  # v2.0.0
+        with:
+          severity: warning
+          scandir: '.'
+          format: gcc
+          ignore_paths: tests
+
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+          persist-credentials: false
+
+      - name: GitLeaks Scan
+        uses: gitleaks/gitleaks-action@cb7149a9e2ee4c4f5db2b0c2e19a85e2e52c8eaf  # v2.3.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  validate-scripts:
+    name: Validate Script Syntax
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          persist-credentials: false
+
+      - name: Check bash syntax
+        run: |
+          echo "Checking bash script syntax..."
+          find . -name "*.sh" -type f | while read -r script; do
+            echo "Checking: $script"
+            bash -n "$script" || {
+              echo "::error file=$script::Syntax error in $script"
+              exit 1
+            }
+          done
+          echo "✓ All scripts have valid syntax"
+
+      - name: Check for dangerous patterns
+        run: |
+          echo "Checking for dangerous patterns..."
+
+          # Patterns to block
+          dangerous_patterns=(
+            "rm -rf /"
+            "eval.*\$"
+            "chmod 777"
+            "> /dev/sda"
+            "dd if=/dev/zero"
+            "mkfs\."
+            ":(){ :|:& };:"
+          )
+
+          found_issues=false
+
+          for pattern in "${dangerous_patterns[@]}"; do
+            if grep -rn "$pattern" --include="*.sh" . 2>/dev/null; then
+              echo "::error::Found dangerous pattern: $pattern"
+              found_issues=true
+            fi
+          done
+
+          if [[ "$found_issues" == "true" ]]; then
+            echo "::error::Dangerous patterns detected in scripts"
+            exit 1
+          fi
+
+          echo "✓ No dangerous patterns found"
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for hardcoded secrets..."
+
+          # Patterns that might indicate hardcoded secrets
+          secret_patterns=(
+            "password.*=.*['\"][^'\"]{8,}"
+            "api[_-]?key.*=.*['\"][^'\"]{16,}"
+            "token.*=.*['\"][^'\"]{16,}"
+            "secret.*=.*['\"][^'\"]{16,}"
+          )
+
+          found_issues=false
+
+          for pattern in "${secret_patterns[@]}"; do
+            matches=$(grep -riE "$pattern" --include="*.sh" --exclude="*test*.sh" --exclude="setup-commit-signing.sh" . 2>/dev/null || true)
+            if [[ -n "$matches" ]]; then
+              echo "::warning::Possible hardcoded secret found matching pattern: $pattern"
+              echo "$matches"
+              # Don't fail on this, just warn
+            fi
+          done
+
+          echo "✓ Hardcoded secret check complete"
+
+  security-checks:
+    name: Security Best Practices
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          persist-credentials: false
+
+      - name: Check for set -e usage
+        run: |
+          echo "Checking for proper error handling..."
+
+          scripts=$(find . -name "*.sh" -type f -not -path "*/tests/*" -not -path "*/.git/*")
+
+          missing_set_e=()
+
+          for script in $scripts; do
+            if ! grep -q "set -e" "$script" 2>/dev/null; then
+              missing_set_e+=("$script")
+            fi
+          done
+
+          if [[ ${#missing_set_e[@]} -gt 0 ]]; then
+            echo "::warning::The following scripts don't use 'set -e' for error handling:"
+            for script in "${missing_set_e[@]}"; do
+              echo "  - $script"
+            done
+            echo ""
+            echo "Consider adding 'set -e' or 'set -euo pipefail' at the start of scripts"
+          else
+            echo "✓ All scripts use proper error handling"
+          fi
+
+      - name: Check for variable quoting
+        run: |
+          echo "Checking for unquoted variables (sampling)..."
+
+          # This is a simplified check - ShellCheck does this better
+          # but we can catch some obvious cases
+
+          scripts=$(find . -name "*.sh" -type f -not -path "*/tests/*" | head -10)
+
+          for script in $scripts; do
+            # Look for common unquoted variable patterns
+            if grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^"]' "$script" | grep -v "^\s*#" | head -5; then
+              echo "::warning file=$script::Found potentially unquoted variables in $script"
+            fi
+          done
+
+          echo "✓ Variable quoting check complete"
+
+      - name: Check file permissions
+        run: |
+          echo "Checking file permissions..."
+
+          # Check that scripts are executable
+          non_executable=$(find . -name "*.sh" -type f -not -path "*/tests/*" ! -executable)
+
+          if [[ -n "$non_executable" ]]; then
+            echo "::warning::Found non-executable scripts:"
+            echo "$non_executable"
+            echo ""
+            echo "Run: chmod +x <script>"
+          else
+            echo "✓ All scripts are executable"
+          fi
+
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [shellcheck, secret-scanning, validate-scripts, security-checks]
+    if: always()
+
+    steps:
+      - name: Check Results
+        run: |
+          echo "=========================================="
+          echo "Security Scan Summary"
+          echo "=========================================="
+          echo "ShellCheck:         ${{ needs.shellcheck.result }}"
+          echo "Secret Scanning:    ${{ needs.secret-scanning.result }}"
+          echo "Script Validation:  ${{ needs.validate-scripts.result }}"
+          echo "Security Checks:    ${{ needs.security-checks.result }}"
+          echo "=========================================="
+
+          # Check if any critical checks failed
+          if [[ "${{ needs.shellcheck.result }}" == "failure" ]] || \
+             [[ "${{ needs.secret-scanning.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-scripts.result }}" == "failure" ]]; then
+            echo ""
+            echo "::error::❌ Security scan failed - critical issues detected"
+            exit 1
+          fi
+
+          if [[ "${{ needs.security-checks.result }}" == "failure" ]]; then
+            echo ""
+            echo "::warning::⚠️ Security best practices check failed"
+            # Don't fail the build for best practices, just warn
+          fi
+
+          echo ""
+          echo "✓ All security checks passed"

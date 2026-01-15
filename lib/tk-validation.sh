@@ -7,26 +7,51 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$LIB_DIR/tk-logging.sh"
 
 #----------------------------------------------------
+# VALIDATION CONSTANTS
+#----------------------------------------------------
+
+# Validation regex patterns
+readonly VALID_SERVICE_NAME_REGEX='^[a-z][a-z0-9-]{0,62}$'
+readonly VALID_PORT_REGEX='^[0-9]+$'
+readonly VALID_DOMAIN_REGEX='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'
+readonly MAX_PATH_LENGTH=4096
+
+# Reserved service names
+readonly RESERVED_NAMES=("traefik" "mongodb" "postgres" "redis" "localhost" "docker" "host" "mysql" "nginx")
+
+#----------------------------------------------------
 # INPUT VALIDATION
 #----------------------------------------------------
 
 validate_service_name() {
     local name="$1"
 
+    # Check for empty
     if [[ -z "$name" ]]; then
         log_error "Service name cannot be empty"
         return 1
     fi
 
-    if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        log_error "Service name must contain only alphanumeric characters, hyphens, and underscores"
+    # Check length (max 63 characters per DNS spec)
+    if [[ ${#name} -gt 63 ]]; then
+        log_error "Service name too long (max 63 characters)"
         return 1
     fi
 
-    if [[ ${#name} -gt 50 ]]; then
-        log_error "Service name must be 50 characters or less"
+    # Check format (must start with letter, lowercase only, no underscores)
+    if [[ ! "$name" =~ $VALID_SERVICE_NAME_REGEX ]]; then
+        log_error "Invalid service name format"
+        log_error "Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens"
         return 1
     fi
+
+    # Check for reserved names
+    for reserved in "${RESERVED_NAMES[@]}"; do
+        if [[ "$name" == "$reserved" ]]; then
+            log_error "Service name '$name' is reserved and cannot be used"
+            return 1
+        fi
+    done
 
     return 0
 }
@@ -111,6 +136,102 @@ validate_path() {
     return 0
 }
 
+validate_path_safe() {
+    local path="$1"
+    local context="${2:-path}"
+
+    # Check for empty
+    if [[ -z "$path" ]]; then
+        log_error "$context cannot be empty"
+        return 1
+    fi
+
+    # Check length
+    if [[ ${#path} -gt $MAX_PATH_LENGTH ]]; then
+        log_error "$context exceeds maximum length ($MAX_PATH_LENGTH characters)"
+        return 1
+    fi
+
+    # Get canonical path
+    local canonical_path
+    if command -v realpath >/dev/null 2>&1; then
+        # Use realpath if available
+        if [[ -e "$path" ]]; then
+            canonical_path=$(realpath "$path" 2>/dev/null) || {
+                log_error "Failed to resolve $context: $path"
+                return 1
+            }
+        else
+            # Path doesn't exist yet, check parent
+            local parent=$(dirname "$path")
+            if [[ -d "$parent" ]]; then
+                canonical_path=$(realpath "$parent" 2>/dev/null)/$(basename "$path")
+            else
+                log_error "$context parent directory does not exist: $parent"
+                return 1
+            fi
+        fi
+    else
+        # Fallback for systems without realpath
+        if [[ -e "$path" ]]; then
+            canonical_path=$(cd "$(dirname "$path")" 2>/dev/null && pwd)/$(basename "$path") || {
+                log_error "Failed to resolve $context: $path"
+                return 1
+            }
+        else
+            canonical_path="$path"
+        fi
+    fi
+
+    # Block path traversal attempts in canonical path
+    if [[ "$canonical_path" =~ \.\. ]]; then
+        log_error "Path traversal detected in $context"
+        return 1
+    fi
+
+    # Ensure path is within allowed directories
+    local allowed_dirs=(
+        "$HOME"
+        "/tmp"
+        "/var/tmp"
+    )
+
+    # Add project root if we can find it
+    if command -v find_project_root >/dev/null 2>&1; then
+        local project_root=$(find_project_root 2>/dev/null)
+        if [[ -n "$project_root" ]]; then
+            allowed_dirs+=("$project_root")
+        fi
+    fi
+
+    local path_allowed=false
+    for allowed_dir in "${allowed_dirs[@]}"; do
+        if [[ "$canonical_path" == "$allowed_dir"* ]]; then
+            path_allowed=true
+            break
+        fi
+    done
+
+    if [[ "$path_allowed" == "false" ]]; then
+        log_error "$context is outside allowed directories"
+        log_debug "Path: $canonical_path"
+        log_debug "Allowed: ${allowed_dirs[*]}"
+        return 1
+    fi
+
+    # Block sensitive system paths
+    local blocked_paths=("/etc" "/usr" "/bin" "/sbin" "/boot" "/sys" "/proc" "/root")
+    for blocked in "${blocked_paths[@]}"; do
+        if [[ "$canonical_path" == "$blocked"* ]]; then
+            log_error "$context points to protected system directory: $blocked"
+            return 1
+        fi
+    done
+
+    log_debug "Path validation passed: $canonical_path"
+    return 0
+}
+
 #----------------------------------------------------
 # DOCKER VALIDATION
 #----------------------------------------------------
@@ -178,6 +299,7 @@ validate_docker_network() {
 
 sanitize_env_value() {
     local value="$1"
+    # Remove potentially dangerous characters
     value=$(echo "$value" | sed 's/[;&|`$()]//g')
     echo "$value"
 }
@@ -193,9 +315,36 @@ validate_env_name() {
     return 0
 }
 
+validate_env_value_safe() {
+    local name="$1"
+    local value="$2"
+
+    # Validate environment variable name
+    if [[ ! "$name" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+        log_error "Invalid environment variable name: $name"
+        return 1
+    fi
+
+    # Check for injection attempts in value
+    if [[ "$value" =~ (\$\{|\$\(|;|\||&|>|<|\`) ]]; then
+        log_error "Potential injection detected in environment variable value"
+        log_error "Variable: $name"
+        return 1
+    fi
+
+    # Limit value length
+    if [[ ${#value} -gt 4096 ]]; then
+        log_error "Environment variable value too long (max 4096 characters)"
+        log_error "Variable: $name"
+        return 1
+    fi
+
+    return 0
+}
+
 # Export functions if sourced
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
-    export -f validate_service_name validate_domain validate_port validate_path
+    export -f validate_service_name validate_domain validate_port validate_path validate_path_safe
     export -f validate_docker validate_docker_compose validate_compose_file validate_docker_network
-    export -f sanitize_env_value validate_env_name
+    export -f sanitize_env_value validate_env_name validate_env_value_safe
 fi

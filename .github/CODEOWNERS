@@ -1,0 +1,86 @@
+# Code Owners for Traefik Scripts Repository
+#
+# Code owners are automatically requested for review when someone
+# opens a pull request that modifies code that they own.
+#
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ============================================================================
+# Default Owners
+# ============================================================================
+
+# Default owner for everything in the repo
+# Unless a later match takes precedence
+* @natejswenson
+
+# ============================================================================
+# Security-Sensitive Files
+# ============================================================================
+
+# Security-sensitive files require review from security team
+# These files handle security validation, authentication, and sensitive operations
+/.github/workflows/ @natejswenson
+/.github/CODEOWNERS @natejswenson
+/lib/tk-security.sh @natejswenson
+/lib/tk-validation.sh @natejswenson
+/lib/tk-secrets.sh @natejswenson
+
+# ============================================================================
+# CI/CD Pipeline
+# ============================================================================
+
+# CI/CD pipeline changes require careful review
+/.github/workflows/merge-to-main.yml @natejswenson
+/.github/workflows/test.yml @natejswenson
+/.github/workflows/security-scan.yml @natejswenson
+/merge-to-main.sh @natejswenson
+
+# ============================================================================
+# Core CLI and Libraries
+# ============================================================================
+
+# Main CLI requires careful review
+/tk @natejswenson
+
+# Library modules require careful review
+/lib/ @natejswenson
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+# Test files should be reviewed
+/tests/ @natejswenson
+
+# Security tests require extra scrutiny
+/tests/test-security.sh @natejswenson
+/tests/test-validation.sh @natejswenson
+
+# ============================================================================
+# Documentation
+# ============================================================================
+
+# Documentation can be reviewed by maintainers
+*.md @natejswenson
+/docs/ @natejswenson
+
+# Security documentation requires review
+/docs/specs/security-enhancements.md @natejswenson
+SECURITY.md @natejswenson
+
+# ============================================================================
+# Configuration Files
+# ============================================================================
+
+# Configuration templates and examples
+.tkrc.example @natejswenson
+.gitignore @natejswenson
+
+# ============================================================================
+# Scripts
+# ============================================================================
+
+# Core scripts require review
+/connect-service.sh @natejswenson
+/add-service.sh @natejswenson
+/setup-commit-signing.sh @natejswenson
