@@ -1,0 +1,385 @@
+# =============================================================================
+# CI Pipeline - Tests, Linting, and Security
+# =============================================================================
+#
+# This workflow runs on:
+#   - Push to develop or main branches
+#   - Pull requests to develop or main branches
+#   - Manual trigger via workflow_dispatch
+#
+# Jobs:
+#   1. test       - Run unit and integration tests
+#   2. lint       - ShellCheck and script permissions
+#   3. security   - Gitleaks secret scanning and bash syntax validation
+#   4. summary    - Aggregate results from all jobs
+#   5. automerge  - Auto-merge develop to main when all checks pass
+#
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  security-events: write
+  issues: write
+  pull-requests: write
+
+env:
+  COVERAGE_THRESHOLD: 95
+
+# =============================================================================
+# Jobs
+# =============================================================================
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Test Suite
+  # ---------------------------------------------------------------------------
+  # Runs unit tests, integration tests, and generates coverage reports
+  # ---------------------------------------------------------------------------
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # -------------------------
+      # Setup
+      # -------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats bc
+
+      - name: Verify Docker installation
+        run: |
+          docker --version
+          docker compose version
+
+      # -------------------------
+      # Run Tests
+      # -------------------------
+      - name: Run unit tests
+        run: ./run-tests.sh --unit --verbose
+        env:
+          TK_TEST_MODE: "true"
+
+      - name: Run integration tests
+        run: ./run-tests.sh --integration --verbose
+        env:
+          TK_TEST_MODE: "true"
+
+      # -------------------------
+      # Coverage
+      # -------------------------
+      - name: Generate coverage report
+        continue-on-error: true
+        run: |
+          if command -v kcov &> /dev/null; then
+            ./run-tests.sh --coverage
+          else
+            echo "::notice::kcov not installed, skipping coverage generation"
+          fi
+        env:
+          TK_TEST_MODE: "true"
+
+      - name: Check coverage threshold
+        if: hashFiles('tests/coverage/coverage-summary.txt') != ''
+        run: |
+          if [ -f tests/coverage/coverage-summary.txt ]; then
+            COVERAGE=$(grep -o '[0-9.]*' tests/coverage/coverage-summary.txt)
+            echo "Coverage: $COVERAGE%"
+            if (( $(echo "$COVERAGE >= $COVERAGE_THRESHOLD" | bc -l) )); then
+              echo "::notice::Coverage $COVERAGE% meets ${COVERAGE_THRESHOLD}% threshold"
+            else
+              echo "::error::Coverage $COVERAGE% is below ${COVERAGE_THRESHOLD}% threshold"
+              exit 1
+            fi
+          fi
+
+      # -------------------------
+      # Artifacts
+      # -------------------------
+      - name: Upload coverage report
+        if: always() && hashFiles('tests/coverage/coverage-summary.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: tests/coverage/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: tests/*.tap
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # -------------------------
+      # PR Comment
+      # -------------------------
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request' && hashFiles('tests/coverage/coverage-summary.txt') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverageFile = 'tests/coverage/coverage-summary.txt';
+
+            if (fs.existsSync(coverageFile)) {
+              const coverage = fs.readFileSync(coverageFile, 'utf8');
+              const match = coverage.match(/([0-9.]+)%/);
+
+              if (match) {
+                const coveragePercent = match[1];
+                const threshold = process.env.COVERAGE_THRESHOLD;
+                const passed = parseFloat(coveragePercent) >= parseFloat(threshold);
+                const status = passed ? '✅' : '❌';
+                const result = passed
+                  ? '✅ Coverage meets the required threshold'
+                  : '❌ Coverage is below the required threshold';
+
+                const body = [
+                  `## Test Coverage Report ${status}`,
+                  '',
+                  `| Metric | Value |`,
+                  `|--------|-------|`,
+                  `| Coverage | ${coveragePercent}% |`,
+                  `| Threshold | ${threshold}% |`,
+                  '',
+                  result,
+                  '',
+                  `[View detailed report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+                ].join('\n');
+
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.name,
+                  body: body
+                });
+              }
+            }
+
+  # ---------------------------------------------------------------------------
+  # Linting
+  # ---------------------------------------------------------------------------
+  # Validates shell scripts with ShellCheck and verifies permissions
+  # ---------------------------------------------------------------------------
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # -------------------------
+      # ShellCheck
+      # -------------------------
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          echo "::group::ShellCheck .sh files"
+          find . -path ./.git -prune -o -name "*.sh" -type f -print0 | \
+            xargs -0 shellcheck -x --severity=error || true
+          echo "::endgroup::"
+
+          echo "::group::ShellCheck tk executable"
+          shellcheck -x --severity=error tk || true
+          echo "::endgroup::"
+
+          echo "::notice::ShellCheck analysis complete"
+
+      # -------------------------
+      # Script Permissions
+      # -------------------------
+      - name: Verify script permissions
+        run: |
+          echo "::group::Checking .sh file permissions"
+          non_executable=$(find . -name "*.sh" -type f ! -executable -print)
+          if [ -n "$non_executable" ]; then
+            echo "::error::Non-executable .sh files found:"
+            echo "$non_executable"
+            exit 1
+          fi
+          echo "All .sh files are executable"
+          echo "::endgroup::"
+
+          echo "::group::Checking tk permission"
+          if [ ! -x tk ]; then
+            echo "::error::tk is not executable"
+            exit 1
+          fi
+          echo "tk is executable"
+          echo "::endgroup::"
+
+  # ---------------------------------------------------------------------------
+  # Security
+  # ---------------------------------------------------------------------------
+  # Scans for secrets, validates bash syntax, and performs security checks
+  # ---------------------------------------------------------------------------
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # -------------------------
+      # Secret Scanning (Gitleaks)
+      # -------------------------
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2.3.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------------------------
+      # Bash Syntax Validation
+      # -------------------------
+      - name: Validate bash syntax
+        run: |
+          echo "::group::Bash syntax validation"
+          set -euo pipefail
+
+          error_count=0
+          while IFS= read -r -d '' script; do
+            if bash -n "$script" 2>&1; then
+              echo "✓ $script"
+            else
+              echo "::error file=$script::Syntax error in $script"
+              error_count=$((error_count + 1))
+            fi
+          done < <(find . -name "*.sh" -type f -not -path "*/tests/*" -print0)
+
+          echo "::endgroup::"
+
+          if [ "$error_count" -gt 0 ]; then
+            echo "::error::Found $error_count script(s) with syntax errors"
+            exit 1
+          fi
+          echo "::notice::All scripts have valid bash syntax"
+
+  # ---------------------------------------------------------------------------
+  # Summary
+  # ---------------------------------------------------------------------------
+  # Aggregates results from all jobs and provides final status
+  # ---------------------------------------------------------------------------
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [test, lint, security]
+    if: always()
+
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "================================"
+          echo "        CI Pipeline Results     "
+          echo "================================"
+          echo ""
+
+          # Track overall status
+          all_passed=true
+
+          # Test results
+          if [ "${{ needs.test.result }}" == "success" ]; then
+            echo "✅ Tests      : Passed"
+          else
+            echo "❌ Tests      : ${{ needs.test.result }}"
+            all_passed=false
+          fi
+
+          # Lint results
+          if [ "${{ needs.lint.result }}" == "success" ]; then
+            echo "✅ Lint       : Passed"
+          else
+            echo "❌ Lint       : ${{ needs.lint.result }}"
+            all_passed=false
+          fi
+
+          # Security results
+          if [ "${{ needs.security.result }}" == "success" ]; then
+            echo "✅ Security   : Passed"
+          else
+            echo "❌ Security   : ${{ needs.security.result }}"
+            all_passed=false
+          fi
+
+          echo ""
+          echo "================================"
+
+          if [ "$all_passed" == "true" ]; then
+            echo "🎉 All checks passed!"
+            exit 0
+          else
+            echo "💥 Some checks failed"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Auto-merge
+  # ---------------------------------------------------------------------------
+  # Automatically merges develop to main when all checks pass
+  # Only runs on push to develop branch
+  # ---------------------------------------------------------------------------
+
+  automerge:
+    name: Auto-merge
+    runs-on: ubuntu-latest
+    needs: [test, lint, security]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/develop' &&
+      needs.test.result == 'success' &&
+      needs.lint.result == 'success' &&
+      needs.security.result == 'success'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge develop to main
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          echo "::group::Merging develop to main"
+          git checkout main
+          git merge --no-ff develop -m "chore: merge develop to main (automated)"
+          git push origin main
+          echo "::endgroup::"
+
+          echo "::notice::Successfully merged develop to main"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
