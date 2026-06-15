@@ -136,6 +136,17 @@ tk connect ~/projects/my-service --dry-run
 tk connect ~/projects/my-service
 ```
 
+### Example 3b: Connect a Service With Production Hardening
+
+```bash
+# Non-root container, data/secrets kept out of the image, no source mount,
+# a wired API token. Use this for anything holding real data on a shared LAN.
+tk connect ~/projects/my-api --harden
+
+# tk prints a token to add to .env and reminds you that YOUR APP must enforce
+# it on /api (tk wires the token but can't add auth middleware for you).
+```
+
 ### Example 4: Monitor All Services
 
 ```bash
@@ -169,7 +180,7 @@ Create `.tkrc` in project root for custom settings:
 
 ```bash
 # .tkrc
-DEFAULT_DOMAIN_SUFFIX="home.local"
+DEFAULT_DOMAIN_SUFFIX="internal"
 AUTO_UPDATE_HOSTS="true"
 DEFAULT_SERVICE_PORT="8000"
 DOCKER_NETWORK="traefik"

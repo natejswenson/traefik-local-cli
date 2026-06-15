@@ -2,7 +2,7 @@
 #==============================================================================
 # DNS Setup Script for macOS
 #==============================================================================
-# Purpose: Configure local DNS resolution for *.home.local domains
+# Purpose: Configure local DNS resolution for *.internal domains
 # Usage:   ./setup-dns.sh
 #
 # Requirements:
@@ -11,7 +11,7 @@
 #   - sudo privileges
 #
 # This script will:
-#   - Create macOS resolver configuration for .home.local
+#   - Create macOS resolver configuration for .internal
 #   - Configure nameserver to use localhost
 #   - Restart dnsmasq service
 #   - Flush DNS cache
@@ -22,7 +22,7 @@
 
 set -e
 
-echo "🔧 Fixing DNS resolution for *.home.local domains"
+echo "🔧 Fixing DNS resolution for *.internal domains"
 echo "=================================================="
 echo ""
 
@@ -33,7 +33,7 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Step 1: Creating macOS resolver configuration${NC}"
 sudo mkdir -p /etc/resolver
-echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/home.local
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/internal
 echo -e "${GREEN}✓ Resolver configuration created${NC}"
 echo ""
 
@@ -56,8 +56,8 @@ echo "Testing DNS resolution..."
 echo ""
 
 # Test DNS resolution
-echo "Testing api.home.local:"
-nslookup api.home.local | grep -A 1 "Name:" || echo "DNS lookup failed"
+echo "Testing api.internal:"
+nslookup api.internal | grep -A 1 "Name:" || echo "DNS lookup failed"
 echo ""
 
 echo "Testing services (use -k to skip cert verification for self-signed certs):"
@@ -65,11 +65,11 @@ echo ""
 
 # Test each service
 declare -a services=(
-    "https://traefik.home.local"
-    "https://api.home.local/health"
-    "https://web.home.local/health"
-    "https://ralph-test.home.local/health"
-    "https://salon.home.local"
+    "https://traefik.internal"
+    "https://api.internal/health"
+    "https://web.internal/health"
+    "https://ralph-test.internal/health"
+    "https://salon.internal"
 )
 
 for url in "${services[@]}"; do
@@ -84,12 +84,12 @@ done
 echo ""
 echo "=================================================="
 echo "Your services should now be accessible at:"
-echo "  - Traefik Dashboard: https://traefik.home.local"
-echo "  - Python API: https://api.home.local"
-echo "  - Python API Docs: https://api.home.local/docs"
-echo "  - Node Web: https://web.home.local"
-echo "  - Ralph Test: https://ralph-test.home.local"
-echo "  - Salon: https://salon.home.local"
+echo "  - Traefik Dashboard: https://traefik.internal"
+echo "  - Python API: https://api.internal"
+echo "  - Python API Docs: https://api.internal/docs"
+echo "  - Node Web: https://web.internal"
+echo "  - Ralph Test: https://ralph-test.internal"
+echo "  - Salon: https://salon.internal"
 echo ""
 echo "Note: Your browser may warn about self-signed certificates."
 echo "This is normal for local development. Click 'Advanced' and proceed."

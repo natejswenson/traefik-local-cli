@@ -32,8 +32,12 @@ ${YELLOW}Arguments:${NC}
 
 ${YELLOW}Options:${NC}
   --port PORT        Override detected port
-  --domain DOMAIN    Custom domain (default: service-name.home.local)
+  --domain DOMAIN    Custom domain (default: service-name.internal)
   --no-docker        Skip Dockerfile generation (use existing)
+  --harden, --prod   Emit production-hardened artifacts: non-root container,
+                     data/secrets excluded from the image, no source bind-mount,
+                     no auto-reload, cap_drop ALL + no-new-privileges, and a
+                     wired API token (you must enforce it in the app — see below)
   --dry-run          Show what would be done without making changes
   --help             Show this help message
 
@@ -68,11 +72,16 @@ OVERRIDE_PORT=""
 CUSTOM_DOMAIN=""
 NO_DOCKER=false
 DRY_RUN=false
+HARDEN=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --help|-h)
             usage
+            ;;
+        --harden|--prod)
+            HARDEN=true
+            shift
             ;;
         --port)
             OVERRIDE_PORT="$2"
@@ -172,7 +181,7 @@ if [ -n "$OVERRIDE_PORT" ]; then
 fi
 
 # Set domain
-DOMAIN="${CUSTOM_DOMAIN:-${SERVICE_NAME}.home.local}"
+DOMAIN="${CUSTOM_DOMAIN:-${SERVICE_NAME}.internal}"
 
 # Validate domain
 if ! validate_domain "$DOMAIN"; then
@@ -190,7 +199,13 @@ echo -e "  Framework: ${GREEN}${FRAMEWORK}${NC}"
 echo -e "  Port: ${GREEN}${PORT}${NC}"
 echo -e "  Domain: ${GREEN}https://${DOMAIN}${NC}"
 echo -e "  Entry Point: ${GREEN}${ENTRYPOINT}${NC}"
+if [ "$HARDEN" = true ]; then
+    echo -e "  Mode: ${GREEN}hardened (production)${NC}"
+fi
 echo ""
+
+# Export so the sourced generator functions emit hardened output.
+export HARDEN
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}🔍 DRY RUN MODE - No changes will be made${NC}"
@@ -211,6 +226,8 @@ if [ "$HAS_DOCKERFILE" = "false" ] && [ "$NO_DOCKER" = false ]; then
             generate_dockerignore_python > "${SERVICE_PATH}/.dockerignore"
         elif [ "$LANGUAGE" = "node" ]; then
             generate_dockerignore_node > "${SERVICE_PATH}/.dockerignore"
+        elif [ "$LANGUAGE" = "static" ]; then
+            generate_dockerignore_static > "${SERVICE_PATH}/.dockerignore"
         fi
         echo -e "${GREEN}  ✓ .dockerignore created${NC}"
     else
@@ -306,6 +323,23 @@ fi
 
 echo ""
 
+# Step 2.5: Hardened mode — emit an API token + the enforcement warning.
+# tk WIRES the token (compose reads ${SVC}_API_TOKEN from your .env) but CANNOT
+# add auth middleware to an arbitrary app — enforcement stays the app's job.
+if [ "$HARDEN" = true ]; then
+    SVC_UPPER=$(echo "$SERVICE_NAME" | tr '[:lower:]-' '[:upper:]_')
+    GEN_TOKEN=$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | xxd -p | tr -d '\n')
+    echo -e "${YELLOW}🔐 Hardened mode — API token${NC}"
+    echo -e "  Add this to ${CYAN}${PROJECT_ROOT}/.env${NC} (gitignored — never commit it):"
+    echo -e "    ${GREEN}${SVC_UPPER}_API_TOKEN=${GEN_TOKEN}${NC}"
+    echo -e "  ${RED}⚠ tk wired the token into compose but CANNOT enforce it.${NC}"
+    echo -e "  Your app MUST: (1) reject /api/* without 'Authorization: Bearer \$${SVC_UPPER}_API_TOKEN'"
+    echo -e "                 (2) refuse to bind 0.0.0.0 if the token is unset/<32 chars"
+    echo -e "                 (3) expose an unauthenticated GET /health"
+    echo -e "  Without (1), this service is reachable by every device on the LAN with no auth."
+    echo ""
+fi
+
 # Step 3: Start the service
 if [ "$DRY_RUN" = false ]; then
     echo -e "${BLUE}🚀 Starting service...${NC}"
@@ -389,7 +423,7 @@ if [ "$DRY_RUN" = false ]; then
         echo ""
         echo -e "${CYAN}🎯 Next Steps:${NC}"
         echo -e "  1. Visit ${GREEN}https://${DOMAIN}${NC} to test your service"
-        echo -e "  2. Check Traefik dashboard: ${GREEN}https://traefik.home.local${NC}"
+        echo -e "  2. Check Traefik dashboard: ${GREEN}https://traefik.internal${NC}"
 
         if [ "$NEEDS_MONGODB" = "true" ] || [ "$NEEDS_POSTGRES" = "true" ] || [ "$NEEDS_REDIS" = "true" ]; then
             echo -e "  3. Ensure required services are running:"
