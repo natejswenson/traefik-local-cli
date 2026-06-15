@@ -163,9 +163,35 @@ The unified Traefik CLI provides all functionality in one command.
 - `tk help` - Show help
 
 **Options:**
+- `--harden`, `--prod` - Emit production-hardened artifacts (see below)
 - `--dry-run` - Preview changes without executing
 - `--verbose` - Enable verbose output
 - `--help` - Show help for command
+
+### 🔒 Hardened mode (`tk connect --harden`)
+
+By default `tk connect` generates **development** artifacts — root container, source
+bind-mounted for hot-reload, auto-reload server, and (critically) the whole repo is sent to
+the build context so a local `data/` or `*.db` can end up in the image. Fine for a scratch
+app on a trusted box; **not** fine for anything holding real data on a shared LAN.
+
+`tk connect <path> --harden` swaps in a production posture:
+
+| Area | Hardened output |
+|------|-----------------|
+| Container | non-root `uid 1001`, `cap_drop: ALL`, `no-new-privileges`, production CMD (no `--reload`) |
+| Image | `.dockerignore` excludes `data/`, `*.db`, `*.sqlite`, `*.ofx/qfx/qbo`, `*.pem`, `*.key`, `.env.*` |
+| Compose | `ENV=production`, **no source bind-mount** (code lives in the image), a wired `<SERVICE>_API_TOKEN` |
+| Token | a token is generated and printed for you to add to `.env` |
+
+> ⚠️ **tk wires the token but cannot enforce it.** A bash generator can't add auth middleware
+> to your app. In `--harden` mode your app MUST itself: (1) reject `/api/*` without
+> `Authorization: Bearer $<SERVICE>_API_TOKEN`, (2) refuse to bind `0.0.0.0` without a ≥32-char
+> token, and (3) expose an unauthenticated `GET /health`. Without (1) the service is reachable
+> by every device on the LAN with no auth.
+>
+> Hardened mode drops the source bind-mount, so **persistent data needs a manual data-only
+> volume** (e.g. `- ${HOME}/app/data:/data`).
 
 ## 📚 Library Modules
 
