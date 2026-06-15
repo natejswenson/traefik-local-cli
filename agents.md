@@ -271,6 +271,7 @@ Input: /path/to/service [name]
 **Supported:**
 - ✅ Python: FastAPI, Flask, Django
 - ✅ Node.js: Express, NestJS, Next.js, Koa
+- ✅ Static/nginx: HTML sites with nginx configuration
 - ✅ Auto-detects: MongoDB, PostgreSQL, Redis dependencies
 - ✅ Generates Dockerfile if not present
 - ✅ Full Traefik HTTPS routing
@@ -382,13 +383,16 @@ get_service_status()       # Get service health status
 
 **Functions:**
 ```bash
-detect_language()          # Python, Node.js, or unknown
+detect_language()          # Python, Node.js, static, or unknown
 detect_python_framework()  # FastAPI, Flask, Django, etc.
 detect_node_framework()    # Express, NestJS, Next.js, etc.
+detect_static_service()    # nginx, static-generic
 find_python_entry()        # Find main.py, app.py, etc.
 find_node_entry()          # Find index.js from package.json
+find_static_entrypoint()   # Find index.html
 detect_python_port()       # Parse port from code
 detect_node_port()         # Parse port from code/env
+extract_port_static()      # Parse port from nginx.conf
 detect_dependencies()      # MongoDB, Redis, PostgreSQL
 ```
 
@@ -399,6 +403,8 @@ detect_dependencies()      # MongoDB, Redis, PostgreSQL
 ```bash
 generate_python_dockerfile()     # Python Dockerfile template
 generate_node_dockerfile()       # Node.js Dockerfile template
+generate_dockerfile_nginx()      # nginx static site Dockerfile
+generate_dockerfile_static_generic()  # Generic static site Dockerfile
 generate_compose_block()         # docker-compose.yml service
 generate_traefik_labels()        # Traefik routing labels
 generate_health_check()          # Health check configuration
