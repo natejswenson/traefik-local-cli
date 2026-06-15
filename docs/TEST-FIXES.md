@@ -50,7 +50,7 @@ run validate_service_name "service123"  # Lowercase
 
 **Problem**: Error occurred when test suite loaded validation library:
 ```
-/Users/natejswenson/localrepo/traefik/scripts/lib/tk-validation.sh: line 26: RESERVED_NAMES[@]: unbound variable
+lib/tk-validation.sh: line 26: RESERVED_NAMES[@]: unbound variable
 ```
 
 **Root Cause**:

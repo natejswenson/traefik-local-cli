@@ -127,8 +127,8 @@ if [ ! -d "$SERVICE_PATH" ]; then
     echo ""
     echo -e "${CYAN}Hint: Use an absolute path or ensure you're in the correct directory${NC}"
     echo -e "${CYAN}Examples:${NC}"
-    echo -e "  tk add ~/localrepo/helloworld"
-    echo -e "  tk add /Users/natejswenson/localrepo/helloworld"
+    echo -e "  tk add ~/projects/helloworld"
+    echo -e "  tk add /path/to/your/service"
     exit 1
 fi
 
