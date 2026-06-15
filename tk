@@ -353,7 +353,7 @@ cmd_status() {
 
     # Show URLs
     echo -e "${CYAN}📍 Service URLs:${NC}"
-    echo -e "  • Traefik Dashboard: ${GREEN}https://traefik.home.local${NC}"
+    echo -e "  • Traefik Dashboard: ${GREEN}https://traefik.internal${NC}"
 
     # Extract service names and show their URLs
     sed -n '/^services:/,/^[a-z]/p' docker-compose.yml | \
@@ -362,7 +362,7 @@ cmd_status() {
         sed 's/^  //' | \
         while IFS= read -r service; do
             if [ "$service" != "traefik" ] && [ "$service" != "mongodb" ] && [ "$service" != "postgres" ] && [ "$service" != "redis" ]; then
-                echo -e "  • ${service}: ${GREEN}https://${service}.home.local${NC}"
+                echo -e "  • ${service}: ${GREEN}https://${service}.internal${NC}"
             fi
         done
     echo ""

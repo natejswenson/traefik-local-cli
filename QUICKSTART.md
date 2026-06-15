@@ -169,7 +169,7 @@ Create `.tkrc` in project root for custom settings:
 
 ```bash
 # .tkrc
-DEFAULT_DOMAIN_SUFFIX="home.local"
+DEFAULT_DOMAIN_SUFFIX="internal"
 AUTO_UPDATE_HOSTS="true"
 DEFAULT_SERVICE_PORT="8000"
 DOCKER_NETWORK="traefik"

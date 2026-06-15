@@ -12,7 +12,7 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #----------------------------------------------------
 # DEFAULT CONFIGURATION
 #----------------------------------------------------
-export DEFAULT_DOMAIN_SUFFIX="${DEFAULT_DOMAIN_SUFFIX:-home.local}"
+export DEFAULT_DOMAIN_SUFFIX="${DEFAULT_DOMAIN_SUFFIX:-internal}"
 export AUTO_UPDATE_HOSTS="${AUTO_UPDATE_HOSTS:-true}"
 export CONFIRM_DESTRUCTIVE="${CONFIRM_DESTRUCTIVE:-true}"
 export DOCKER_COMPOSE_FILE="${DOCKER_COMPOSE_FILE:-docker-compose.yml}"

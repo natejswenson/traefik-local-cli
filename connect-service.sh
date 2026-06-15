@@ -32,7 +32,7 @@ ${YELLOW}Arguments:${NC}
 
 ${YELLOW}Options:${NC}
   --port PORT        Override detected port
-  --domain DOMAIN    Custom domain (default: service-name.home.local)
+  --domain DOMAIN    Custom domain (default: service-name.internal)
   --no-docker        Skip Dockerfile generation (use existing)
   --dry-run          Show what would be done without making changes
   --help             Show this help message
@@ -172,7 +172,7 @@ if [ -n "$OVERRIDE_PORT" ]; then
 fi
 
 # Set domain
-DOMAIN="${CUSTOM_DOMAIN:-${SERVICE_NAME}.home.local}"
+DOMAIN="${CUSTOM_DOMAIN:-${SERVICE_NAME}.internal}"
 
 # Validate domain
 if ! validate_domain "$DOMAIN"; then
@@ -211,6 +211,8 @@ if [ "$HAS_DOCKERFILE" = "false" ] && [ "$NO_DOCKER" = false ]; then
             generate_dockerignore_python > "${SERVICE_PATH}/.dockerignore"
         elif [ "$LANGUAGE" = "node" ]; then
             generate_dockerignore_node > "${SERVICE_PATH}/.dockerignore"
+        elif [ "$LANGUAGE" = "static" ]; then
+            generate_dockerignore_static > "${SERVICE_PATH}/.dockerignore"
         fi
         echo -e "${GREEN}  ✓ .dockerignore created${NC}"
     else
@@ -389,7 +391,7 @@ if [ "$DRY_RUN" = false ]; then
         echo ""
         echo -e "${CYAN}🎯 Next Steps:${NC}"
         echo -e "  1. Visit ${GREEN}https://${DOMAIN}${NC} to test your service"
-        echo -e "  2. Check Traefik dashboard: ${GREEN}https://traefik.home.local${NC}"
+        echo -e "  2. Check Traefik dashboard: ${GREEN}https://traefik.internal${NC}"
 
         if [ "$NEEDS_MONGODB" = "true" ] || [ "$NEEDS_POSTGRES" = "true" ] || [ "$NEEDS_REDIS" = "true" ]; then
             echo -e "  3. Ensure required services are running:"
