@@ -29,7 +29,7 @@
 
 ### 🎯 First Steps When Entering This Codebase
 
-**Working Directory**: `/Users/natejswenson/localrepo/traefik/scripts/`
+**Working Directory**: the `scripts/` repo root (this folder)
 **Git Repo**: This folder (scripts/) has its own .git - it's a separate repository
 **Workflow**: develop → main (use `./merge-to-main.sh` to merge)
 
