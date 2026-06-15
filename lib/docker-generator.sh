@@ -205,6 +205,71 @@ CMD ["npm", "run", "dev"]
 EOF
 }
 
+# Generate Dockerfile for nginx static site
+generate_dockerfile_nginx() {
+    local port="$1"
+
+    cat <<EOF
+FROM nginx:alpine
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx config if present, otherwise create default
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy static files
+COPY . /usr/share/nginx/html
+
+# Remove nginx.conf from html directory (we already copied it to the right place)
+RUN rm -f /usr/share/nginx/html/nginx.conf
+
+EXPOSE ${port}
+
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+}
+
+# Generate Dockerfile for generic static site (no nginx.conf)
+generate_dockerfile_static_generic() {
+    local port="$1"
+
+    cat <<EOF
+FROM nginx:alpine
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Create custom nginx config for SPA-friendly routing
+RUN echo 'server { \\
+    listen ${port}; \\
+    server_name localhost; \\
+    root /usr/share/nginx/html; \\
+    index index.html index.htm; \\
+    \\
+    location / { \\
+        try_files \$uri \$uri/ /index.html; \\
+    } \\
+    \\
+    location /health { \\
+        access_log off; \\
+        return 200 "healthy\\n"; \\
+        add_header Content-Type text/plain; \\
+    } \\
+}' > /etc/nginx/conf.d/default.conf
+
+# Copy static files
+COPY . /usr/share/nginx/html
+
+EXPOSE ${port}
+
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+}
+
 # Generate Dockerfile based on framework
 generate_dockerfile() {
     local language="$1"
@@ -242,6 +307,16 @@ generate_dockerfile() {
                     ;;
                 *)
                     generate_dockerfile_express "$port"
+                    ;;
+            esac
+            ;;
+        static)
+            case "${framework}" in
+                nginx)
+                    generate_dockerfile_nginx "$port"
+                    ;;
+                *)
+                    generate_dockerfile_static_generic "$port"
                     ;;
             esac
             ;;
@@ -297,6 +372,27 @@ README.md
 dist/
 coverage/
 .cache/
+EOF
+}
+
+# Generate .dockerignore for static sites
+generate_dockerignore_static() {
+    cat <<'EOF'
+.git
+.gitignore
+.dockerignore
+README.md
+SPEC.md
+.env
+.env.local
+*.md
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+docker-compose.yml
+docker-compose*.yml
+Dockerfile.dev
 EOF
 }
 
@@ -360,16 +456,28 @@ generate_compose_service() {
     fi
 
     # Volume mount pattern
-    local volumes="      - ${service_path}:/app:delegated"
-    if [ "$language" = "node" ]; then
-        volumes="${volumes}
+    local volumes=""
+    if [ "$language" = "static" ]; then
+        # Static sites serve from nginx html directory
+        volumes="      - ${service_path}:/usr/share/nginx/html:ro"
+    else
+        volumes="      - ${service_path}:/app:delegated"
+        if [ "$language" = "node" ]; then
+            volumes="${volumes}
       - /app/node_modules"
+        fi
     fi
 
     # Health check command
     local health_cmd="curl"
     if [ "$language" = "node" ]; then
         health_cmd="wget --no-verbose --tries=1 --spider"
+    fi
+
+    # Health check path - static sites may not have /health, check root instead
+    local health_path="/health"
+    if [ "$language" = "static" ]; then
+        health_path="/"
     fi
 
     # Convert service name to title case for display
@@ -390,13 +498,13 @@ ${env_vars}
 ${volumes}
     labels:
       <<: *traefik-base-labels
-      traefik.http.routers.${service_name}.rule: Host(\`${service_name}.home.local\`)
+      traefik.http.routers.${service_name}.rule: Host(\`${service_name}.internal\`)
       traefik.http.routers.${service_name}.entrypoints: websecure
       traefik.http.routers.${service_name}.tls: "true"
       traefik.http.services.${service_name}.loadbalancer.server.port: ${port}
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "${health_cmd}", "-f", "http://localhost:${port}/health"]
+      test: ["CMD", "${health_cmd}", "-f", "http://localhost:${port}${health_path}"]
       start_period: 10s
     depends_on:
 ${depends_on}
@@ -411,8 +519,11 @@ if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
     export -f generate_dockerfile_express
     export -f generate_dockerfile_nestjs
     export -f generate_dockerfile_nextjs
+    export -f generate_dockerfile_nginx
+    export -f generate_dockerfile_static_generic
     export -f generate_dockerfile
     export -f generate_dockerignore_python
     export -f generate_dockerignore_node
+    export -f generate_dockerignore_static
     export -f generate_compose_service
 fi

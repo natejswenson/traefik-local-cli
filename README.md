@@ -111,6 +111,7 @@ Auto-connects external services from local repositories to Traefik.
 **Supported:**
 - ✅ Python: FastAPI, Flask, Django
 - ✅ Node.js: Express, NestJS, Next.js, Koa
+- ✅ Static/nginx: Static sites with nginx configuration
 - ✅ Auto-detects: MongoDB, PostgreSQL, Redis
 
 #### `add-service.sh`
@@ -206,6 +207,7 @@ Service language and framework detection.
 **Capabilities:**
 - Detects Python (FastAPI, Flask, Django)
 - Detects Node.js (Express, NestJS, Next.js)
+- Detects Static sites (nginx, generic HTML)
 - Finds entry points and ports
 - Identifies dependencies
 
@@ -213,7 +215,7 @@ Service language and framework detection.
 Generates Dockerfiles and docker-compose configurations.
 
 **Features:**
-- Language-specific Dockerfile templates
+- Language-specific Dockerfile templates (Python, Node.js, nginx)
 - Docker Compose service blocks
 - Traefik label generation
 - Health check configuration
@@ -225,7 +227,7 @@ Create a `.tkrc` file in your project root for custom configuration:
 
 ```bash
 # Domain suffix for services
-DEFAULT_DOMAIN_SUFFIX="home.local"
+DEFAULT_DOMAIN_SUFFIX="internal"
 
 # Auto-update /etc/hosts
 AUTO_UPDATE_HOSTS="true"

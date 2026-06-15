@@ -62,6 +62,68 @@ detect_node_service() {
     echo "$result"
 }
 
+# Detect static site type (nginx, apache, or generic)
+detect_static_service() {
+    local service_path="$1"
+    local result=""
+
+    # Check for nginx configuration
+    if [ -f "${service_path}/nginx.conf" ]; then
+        result="nginx"
+    # Check for Apache configuration
+    elif [ -f "${service_path}/.htaccess" ] || [ -f "${service_path}/httpd.conf" ]; then
+        result="apache"
+    # Generic static site (just HTML/CSS/JS files)
+    else
+        result="static-generic"
+    fi
+
+    echo "$result"
+}
+
+# Extract port from nginx config
+extract_port_static() {
+    local service_path="$1"
+    local port="80"  # default for nginx
+
+    # Check nginx.conf for listen directive
+    if [ -f "${service_path}/nginx.conf" ]; then
+        local found_port=$(grep -E '^\s*listen\s+[0-9]+' "${service_path}/nginx.conf" 2>/dev/null | grep -o '[0-9][0-9]*' | head -1)
+        if [ -n "$found_port" ]; then
+            port="$found_port"
+        fi
+    fi
+
+    echo "$port"
+}
+
+# Find entry point for static site (main HTML file)
+find_static_entrypoint() {
+    local service_path="$1"
+
+    # Check for common index files
+    for file in index.html index.htm default.html home.html; do
+        if [ -f "${service_path}/${file}" ]; then
+            echo "$file"
+            return
+        fi
+    done
+
+    # Check in public or dist directories
+    for dir in public dist build www html; do
+        if [ -d "${service_path}/${dir}" ]; then
+            for file in index.html index.htm; do
+                if [ -f "${service_path}/${dir}/${file}" ]; then
+                    echo "${dir}/${file}"
+                    return
+                fi
+            done
+        fi
+    done
+
+    echo "index.html"  # default
+}
+
 # Detect primary programming language
 detect_language() {
     local service_path="$1"
@@ -81,10 +143,14 @@ detect_language() {
     # Check for Rust
     elif [ -f "${service_path}/Cargo.toml" ]; then
         echo "rust"
+    # Check for nginx/static site (nginx.conf or html files without other languages)
+    elif [ -f "${service_path}/nginx.conf" ] || \
+         [ -n "$(find "${service_path}" -maxdepth 1 -name '*.html' -print -quit 2>/dev/null)" ]; then
+        echo "static"
     # Check by file extensions
-    elif [ -n "$(find "${service_path}" -maxdepth 2 -name '*.py' -print -quit)" ]; then
+    elif [ -n "$(find "${service_path}" -maxdepth 2 -name '*.py' -print -quit 2>/dev/null)" ]; then
         echo "python"
-    elif [ -n "$(find "${service_path}" -maxdepth 2 -name '*.js' -o -name '*.ts' -print -quit)" ]; then
+    elif [ -n "$(find "${service_path}" -maxdepth 2 \( -name '*.js' -o -name '*.ts' \) -print -quit 2>/dev/null)" ]; then
         echo "node"
     else
         echo "unknown"
@@ -290,6 +356,9 @@ generate_service_metadata() {
     elif [ "$language" = "node" ]; then
         framework=$(detect_node_service "$service_path")
         echo -e "${GREEN}  Framework: ${framework}${NC}"
+    elif [ "$language" = "static" ]; then
+        framework=$(detect_static_service "$service_path")
+        echo -e "${GREEN}  Framework: ${framework}${NC}"
     fi
 
     # Extract port
@@ -298,6 +367,8 @@ generate_service_metadata() {
         port=$(extract_port_python "$service_path")
     elif [ "$language" = "node" ]; then
         port=$(extract_port_node "$service_path")
+    elif [ "$language" = "static" ]; then
+        port=$(extract_port_static "$service_path")
     else
         port="8080"
     fi
@@ -309,6 +380,8 @@ generate_service_metadata() {
         entrypoint=$(find_python_entrypoint "$service_path" "$framework")
     elif [ "$language" = "node" ]; then
         entrypoint=$(find_node_entrypoint "$service_path")
+    elif [ "$language" = "static" ]; then
+        entrypoint=$(find_static_entrypoint "$service_path")
     fi
     echo -e "${GREEN}  Entry point: ${entrypoint}${NC}"
 
@@ -349,11 +422,14 @@ EOF
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
     export -f detect_python_service
     export -f detect_node_service
+    export -f detect_static_service
     export -f detect_language
     export -f extract_port_python
     export -f extract_port_node
+    export -f extract_port_static
     export -f find_python_entrypoint
     export -f find_node_entrypoint
+    export -f find_static_entrypoint
     export -f has_dockerfile
     export -f has_docker_compose
     export -f detect_mongodb_dependency
