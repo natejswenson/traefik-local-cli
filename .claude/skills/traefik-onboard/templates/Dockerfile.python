@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1.7
+#
+# <app> runtime image — hardened FastAPI/uvicorn service for the home-lab Traefik
+# stack. Single-stage; no node (see agent-sdk.overlay.md if the app uses the
+# Claude Agent SDK). Substitute: <app> (lowercase name / venv console-script),
+# <APP> (uppercase env prefix), <PORT>.
+#
+# Invariants: non-root uid 1001 (I1); no secrets/data in the build context — the
+# .dockerignore is the control (I2); venv-binary CMD, never `uv run` (anti-inv).
+
+FROM python:3.12-slim AS runtime
+
+# curl: healthcheck + the uv installer.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv into a system path so the non-root user picks it up too.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# Non-root user (uid 1001) — defense-in-depth: a container holding PII should
+# never run as root.
+RUN useradd --create-home --shell /bin/bash --uid 1001 app
+
+WORKDIR /app
+
+# Metadata + lock first so the deps layer caches independent of source changes.
+# README.md is referenced by pyproject.toml's `readme`.
+# COPY explicit subdirs — NEVER `COPY . .` (keeps data/ out even if .dockerignore drifts).
+COPY --chown=app:app pyproject.toml uv.lock README.md ./
+COPY --chown=app:app src/ ./src/
+RUN chown app:app /app && su app -c "uv sync --frozen --no-dev"
+
+# Container-only env. The host CLI keeps its own defaults; these only apply here.
+# IMPORTANT: repoint ANY directory the app writes OUTSIDE /data here (the
+# BRIEFINGS_DIR lesson — e.g. <APP>_BRIEFINGS_DIR=/data/briefings). A default that
+# resolves to an unmounted, read-only path crashes at RUNTIME — no /health gate
+# catches it. Add a <APP>_NO_INTAKE=1 line if there are LAN-blocked routes (I5).
+ENV <APP>_HOST=0.0.0.0 \
+    <APP>_DATA_DIR=/data \
+    PYTHONUNBUFFERED=1
+
+# Pre-create mount points owned by `app` so the bind-mount / named volume attach
+# cleanly and writes succeed on first run.
+RUN mkdir -p /data && chown -R app:app /data
+
+USER app
+
+EXPOSE <PORT>
+
+# Liveness probe — /health is unauthenticated and touches no DB.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:<PORT>/health || exit 1
+
+# Run the venv console script directly — NOT `uv run` (uv tries to create a
+# writable cache under HOME and fails; the binary needs none and is leaner).
+#
+# THIS LINE ASSUMES the app has a `[project.scripts] <app> = "...:main"` console
+# script AND a `serve` subcommand (budget does: `budget serve`). MOST apps have
+# NEITHER. If so, either add them, or use the uvicorn form instead:
+#   CMD ["/app/.venv/bin/uvicorn", "<module>:app", "--host", "0.0.0.0", "--port", "<PORT>"]
+# whose entrypoint must call install_token_gate()/the bind-refusal (see token-gate.fastapi.md).
+CMD ["/app/.venv/bin/<app>", "serve", "--host", "0.0.0.0", "--port", "<PORT>"]
