@@ -193,6 +193,21 @@ app on a trusted box; **not** fine for anything holding real data on a shared LA
 > Hardened mode drops the source bind-mount, so **persistent data needs a manual data-only
 > volume** (e.g. `- ${HOME}/app/data:/data`).
 
+### 🤖 Claude Code skill: `traefik-onboard`
+
+This repo ships a [Claude Code](https://claude.com/claude-code) skill at
+`.claude/skills/traefik-onboard/` that drives the *whole* hardened onboarding as a deterministic
+procedure with pass/fail gates — and adds the app-side controls `--harden` can't generate (the
+bearer-token gate, the non-loopback bind-refusal, and Claude-Agent-SDK isolation).
+
+- **In this repo:** Claude Code auto-discovers it when you work inside the clone.
+- **Everywhere else:** symlink it into your personal skills dir:
+  `ln -s "$PWD/.claude/skills/traefik-onboard" ~/.claude/skills/traefik-onboard`
+- **Configure** (`.claude/skills/traefik-onboard/SKILL.md` → *Configure*): defaults assume
+  `~/localrepo/traefik`; override `TRAEFIK_DIR` / `STACK_DNS_IP` via your stack's gitignored `.env`.
+
+Then just tell Claude *"add my X app to traefik"*.
+
 ## 📚 Library Modules
 
 ### `lib/tk-common.sh`
