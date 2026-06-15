@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.7
+#
+# <app> runtime image — hardened Node service for the home-lab Traefik stack.
+# Substitute: <app>, <APP> (uppercase env prefix), <PORT>, and the start command.
+#
+# Invariants: non-root uid 1001 (I1); no secrets/data in the build context — for
+# node, `COPY . .` is the convention so the .dockerignore is the ONLY control;
+# the Phase-1 build-context gate (T4) MUST pass or do not ship.
+
+FROM node:20-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Explicit non-root app user (uid 1001) for parity with the python template.
+RUN useradd --create-home --shell /bin/bash --uid 1001 app
+
+WORKDIR /app
+
+# Lockfile first so the deps layer caches independent of source changes.
+COPY --chown=app:app package.json package-lock.json ./
+RUN su app -c "npm ci --omit=dev"
+
+# Source. `.dockerignore` MUST exclude the data dir, .env, node_modules, secrets —
+# it is the load-bearing control here (verified by the Phase-1 context gate, T4).
+COPY --chown=app:app . .
+
+ENV NODE_ENV=production \
+    <APP>_HOST=0.0.0.0 \
+    <APP>_DATA_DIR=/data
+
+RUN mkdir -p /data && chown -R app:app /data
+
+USER app
+
+EXPOSE <PORT>
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:<PORT>/health || exit 1
+
+# Production start — never a `--watch`/`nodemon`/`npm run dev` command.
+CMD ["node", "server.js"]
