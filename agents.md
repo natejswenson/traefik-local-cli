@@ -65,6 +65,7 @@ cat QUICKSTART.md  # Usage examples
 |------|---------|
 | Install CLI | `./install.sh` |
 | Uninstall CLI | `./uninstall.sh` |
+| One-time stack setup (certs, network, compose up) | `./setup.sh` or `tk setup` |
 | Connect service | `./connect-service.sh /path/to/service` |
 | Add new service | `./add-service.sh service-name 8080 python` |
 | Run tests | `./run-tests.sh` |
@@ -147,6 +148,7 @@ scripts/                              # This folder (git root)
 │
 ├── connect-service.sh               # Auto-connect external services ⭐
 ├── add-service.sh                   # Add new service from scratch
+├── setup.sh                         # One-time stack setup: certs, network, compose up (idempotent)
 ├── cleanup.sh                       # Clean Docker resources
 ├── setup-dns.sh                     # Configure DNS for *.localhost
 ├── run-tests.sh                     # Execute test suite
@@ -221,6 +223,7 @@ esac
 ```
 
 **Available Commands:**
+- `tk setup` - One-time stack setup: certs, Docker network, compose up (calls `setup.sh`, idempotent)
 - `tk connect <path> [name]` - Connect external service
 - `tk add <name> [port] [language]` - Add new service
 - `tk status` - Show all service status

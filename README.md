@@ -29,8 +29,12 @@ cd traefik-local-cli
 # Add `tk` to your PATH
 ./install.sh && source ~/.zshrc
 
-# Make the Claude skill available outside this repo (optional)
+# One-time stack setup: certs, Docker network, compose up
+tk setup
+
+# Make the Claude skills available outside this repo (optional)
 ln -s "$PWD/.claude/skills/traefik-onboard" ~/.claude/skills/traefik-onboard
+ln -s "$PWD/.claude/skills/tk" ~/.claude/skills/tk
 ```
 
 ## Usage
@@ -49,9 +53,17 @@ installs the app-side token gate, wires it into Traefik, and verifies every gate
 it done. Configure your stack once in `.claude/skills/traefik-onboard/SKILL.md` → *Configure*
 (`TRAEFIK_DIR`, `STACK_DNS_IP`).
 
+The **`tk`** skill (`.claude/skills/tk/`) is the general-purpose companion to `traefik-onboard`: it
+gives natural-language access to every other `tk` command — `setup`, `status`, `list`, `logs`,
+`start`/`stop`/`restart`, `remove`, `cleanup`, `sync-hosts`, `version` — plus rebuilding an
+already-onboarded service. It never onboards a brand-new PII/API app itself; that always redirects
+to `traefik-onboard`'s mandatory hardening gate.
+
 ### With the CLI directly
 
 ```bash
+tk setup                                # one-time: certs, network, compose up (idempotent)
+
 tk connect ~/projects/my-api --harden   # production-hardened service (non-root, token-wired, no data in image)
 tk connect ~/projects/my-api            # dev mode (hot-reload; not for real data)
 tk connect ~/projects/my-api --dry-run  # preview without changing anything
@@ -100,6 +112,8 @@ $ tk connect ~/projects/notes --harden
 traefik-local-cli/
 ├── tk                       # main CLI entry point
 ├── connect-service.sh       # detect → generate → wire → deploy
+├── setup.sh                 # one-time stack setup: certs, network, compose up (idempotent)
+├── cleanup.sh               # stop stack, optionally remove certs/.env
 ├── setup-dns.sh             # dnsmasq + resolver setup for *.internal
 ├── install.sh / uninstall.sh
 ├── lib/
@@ -110,7 +124,8 @@ traefik-local-cli/
 │   ├── tk-validation.sh     # input validation
 │   └── tk-logging.sh        # logging
 ├── .claude/skills/
-│   └── traefik-onboard/     # the bundled Claude Code skill
+│   ├── traefik-onboard/     # hardened per-app onboarding skill
+│   └── tk/                  # general-purpose tk command skill
 └── tests/                   # bats unit + integration
 ```
 

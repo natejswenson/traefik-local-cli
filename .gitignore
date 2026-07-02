@@ -1,5 +1,4 @@
 # Temporary and test scripts (ignored from version control)
-setup.sh
 test.sh
 fix-dns.sh
 
