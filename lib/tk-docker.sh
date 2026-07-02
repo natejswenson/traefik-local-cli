@@ -49,11 +49,68 @@ get_service_domain() {
     local service_name="$1"
     local compose_file="${2:-$DOCKER_COMPOSE_FILE}"
 
-    local domain=$(grep -A 20 "^  ${service_name}:" "$compose_file" | \
-                   grep "traefik.http.routers.*.rule" | \
-                   sed -n "s/.*Host(\`\(.*\)\`).*/\1/p" | head -1)
+    # Resolve via `docker compose config` rather than grepping the raw file:
+    # real labels look like Host(`${VAR:-default}`) || Host(`x.home.local`) —
+    # unresolved interpolation plus a second OR'd clause. A raw-file grep with
+    # a fixed context window misses services whose rule falls outside it, and
+    # a greedy sed captures the LAST Host() clause, not the first/primary one.
+    local rule
+    rule=$(docker compose -f "$compose_file" config --format json 2>/dev/null | \
+        python3 -c '
+import json, sys
+service = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+svc = data.get("services", {}).get(service, {})
+labels = svc.get("labels", {})
+if isinstance(labels, list):
+    labels = dict(item.split("=", 1) for item in labels if "=" in item)
+for key, value in labels.items():
+    if key.startswith("traefik.http.routers.") and key.endswith(".rule"):
+        print(value)
+        break
+' "$service_name" 2>/dev/null)
+
+    if [ -z "$rule" ]; then
+        echo ""
+        return
+    fi
+
+    # Prefer a .internal host (the current primary domain); fall back to the
+    # first Host() clause for services on a custom/legacy domain only.
+    local domain
+    domain=$(echo "$rule" | grep -oE 'Host\(`[^`]+`\)' | sed -E 's/Host\(`([^`]+)`\)/\1/' | grep '\.internal$' | head -1)
+    if [ -z "$domain" ]; then
+        domain=$(echo "$rule" | grep -oE 'Host\(`[^`]+`\)' | sed -E 's/Host\(`([^`]+)`\)/\1/' | head -1)
+    fi
 
     echo "$domain"
+}
+
+list_all_service_hosts() {
+    local compose_file="${1:-$DOCKER_COMPOSE_FILE}"
+
+    # Derive every Host() from the resolved compose config, not a raw grep of
+    # the file: a raw grep can't tell a real label from a commented-out line
+    # (e.g. a "# TEMPLATE - ADD NEW SERVICE" block) and only captures the last
+    # Host() clause on a line with more than one.
+    docker compose -f "$compose_file" config --format json 2>/dev/null | python3 -c '
+import json, re, sys
+
+data = json.load(sys.stdin)
+services = data.get("services", {})
+
+for svc in services.values():
+    labels = svc.get("labels", {})
+    if isinstance(labels, list):
+        labels = dict(item.split("=", 1) for item in labels if "=" in item)
+    for key, value in labels.items():
+        if key.startswith("traefik.http.routers.") and key.endswith(".rule"):
+            for host in re.findall(r"Host\(`([^`]+)`\)", value):
+                print(host)
+'
 }
 
 list_services() {
@@ -88,5 +145,5 @@ find_project_root() {
 
 # Export functions if sourced
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
-    export -f docker_compose_cmd service_exists get_service_domain list_services find_project_root
+    export -f docker_compose_cmd service_exists get_service_domain list_all_service_hosts list_services find_project_root
 fi

@@ -6,7 +6,15 @@ set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Support test mode - use current directory if TK_TEST_MODE is set (mirrors scripts/tk).
+# Without this, tests would mutate the real docker-compose.yml in PROJECT_ROOT instead
+# of an isolated scratch project.
+if [ "${TK_TEST_MODE:-}" = "true" ]; then
+    PROJECT_ROOT="$PWD"
+else
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
 
 # Source library functions
 source "${SCRIPT_DIR}/lib/tk-common.sh"

@@ -24,12 +24,119 @@ teardown() {
     assert_failure
 }
 
-@test "get_service_domain extracts domain from compose file" {
+@test "get_service_domain extracts the exact domain from a single Host() clause" {
+    skip_if_no_docker
     run get_service_domain "test-service" "$TEST_COMPOSE_FILE"
     assert_success
-    # Domain extraction from labels - may be empty if no domain configured
-    # Just verify the function runs without error
-    [ "$status" -eq 0 ]
+    assert_output_equals "test.localhost"
+}
+
+@test "get_service_domain prefers the .internal host when a rule has two OR'd Host() clauses" {
+    skip_if_no_docker
+    cat > "$TEST_COMPOSE_FILE" <<'EOF'
+version: '3.8'
+
+services:
+  dual-domain-service:
+    image: nginx:alpine
+    container_name: dual-domain-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dual-domain-service.rule=Host(`dual.internal`) || Host(`dual.home.local`)"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: traefik-test
+    driver: bridge
+EOF
+    run get_service_domain "dual-domain-service" "$TEST_COMPOSE_FILE"
+    assert_success
+    assert_output_equals "dual.internal"
+}
+
+@test "get_service_domain returns empty for a service with no router rule" {
+    skip_if_no_docker
+    cat > "$TEST_COMPOSE_FILE" <<'EOF'
+version: '3.8'
+
+services:
+  no-router-service:
+    image: mongo:7
+    container_name: no-router-service
+    labels:
+      - "traefik.enable=false"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: traefik-test
+    driver: bridge
+EOF
+    run get_service_domain "no-router-service" "$TEST_COMPOSE_FILE"
+    assert_success
+    assert_output_equals ""
+}
+
+@test "list_all_service_hosts derives every Host() clause, including secondary aliases" {
+    skip_if_no_docker
+    cat > "$TEST_COMPOSE_FILE" <<'EOF'
+version: '3.8'
+
+services:
+  dual-domain-service:
+    image: nginx:alpine
+    container_name: dual-domain-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dual-domain-service.rule=Host(`dual.internal`) || Host(`dual.home.local`)"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: traefik-test
+    driver: bridge
+EOF
+    run list_all_service_hosts "$TEST_COMPOSE_FILE"
+    assert_success
+    assert_output_contains "dual.internal"
+    assert_output_contains "dual.home.local"
+}
+
+@test "list_all_service_hosts never leaks a commented-out template host" {
+    skip_if_no_docker
+    cat > "$TEST_COMPOSE_FILE" <<'EOF'
+version: '3.8'
+
+services:
+  real-service:
+    image: nginx:alpine
+    container_name: real-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.real-service.rule=Host(`real.internal`)"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: traefik-test
+    driver: bridge
+
+#----------------------------------------------------
+# TEMPLATE - ADD NEW SERVICE
+#----------------------------------------------------
+#  service-name:
+#    labels:
+#      traefik.http.routers.service-name.rule: Host(`service-name.home.local`)
+EOF
+    run list_all_service_hosts "$TEST_COMPOSE_FILE"
+    assert_success
+    assert_output_contains "real.internal"
+    [[ ! "$output" =~ "service-name.home.local" ]]
 }
 
 @test "list_services lists all services in compose file" {

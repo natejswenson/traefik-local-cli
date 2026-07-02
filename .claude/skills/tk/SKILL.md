@@ -44,7 +44,18 @@ These three write `/etc/hosts` via sudo. Before dispatching any of them:
 ```bash
 sudo -n true 2>/dev/null
 ```
-Succeeds → proceed. Fails → tell the user to run `sudo -v` in a terminal first, then ask again.
+Succeeds → proceed. Fails → tell the user this needs sudo and none of the three commands can run
+non-interactively right now.
+
+**Confirmed (not just a caveat): telling the user to "run `sudo -v` in a terminal first" does not
+help.** The Bash tool's shell has no controlling tty (`tty` reports "not a tty"), and macOS's sudo
+scopes cached credentials per-tty (`tty_tickets`, on by default) — a `sudo -v` run in the user's real
+terminal warms a timestamp this check can never see, no matter how recently it was run. Don't tell
+the user to retry after `sudo -v`; it won't change the outcome. The only way to make these three
+commands work non-interactively is a narrowly-scoped `NOPASSWD` sudoers entry for the exact
+`tee -a /etc/hosts` / `sed ... /etc/hosts` invocations — set that up once, outside this skill, if you
+want `add`/`remove`/`sync-hosts` to stop requiring a manual `/etc/hosts` edit.
+
 Skip this check for `add --dry-run` and add's rebuild raw-bypass (`docker compose up -d --build`) —
 neither touches `/etc/hosts`.
 
