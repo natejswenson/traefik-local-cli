@@ -24,6 +24,17 @@ tk --help
 # Should show available commands
 ```
 
+## 🏁 One-Time Stack Setup
+
+Before connecting any services, bring the stack itself up:
+
+```bash
+tk setup
+```
+
+This generates the local SSL certificates, creates the `traefik` Docker network, and starts the
+compose stack — safe to re-run any time (every step is idempotent).
+
 ## 🚀 Common Tasks
 
 ### 1. Connect an External Service
