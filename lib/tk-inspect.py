@@ -237,7 +237,7 @@ def main(argv=None):
     parser = Parser(description=__doc__)
     parser.json_errors = "--json" in argv
     parser.add_argument("--project-directory", type=Path, required=True)
-    parser.add_argument("command", choices=["list", "ls", "status", "ps", "doctor"])
+    parser.add_argument("command", choices=["capabilities", "list", "ls", "status", "ps", "doctor"])
     parser.add_argument("service", nargs="?", help="Limit inspection to one exact Compose service name")
     parser.add_argument("--json", action="store_true", help="Emit one JSON document without secrets or ANSI")
     parser.add_argument("--probe", action="store_true", help="Doctor: GET each routed origin with TLS verification")
@@ -254,6 +254,20 @@ def main(argv=None):
             args.resolve_address = str(ipaddress.ip_address(args.resolve_address))
         except ValueError:
             parser.error("--resolve-address must be an IPv4 or IPv6 address")
+    if args.command == "capabilities":
+        if args.service:
+            parser.error("capabilities does not take a service")
+        report = {"schema_version": 1, "command": "capabilities", "ok": True, "protocol_version": 1,
+                  "commands": ["list", "status", "doctor", "inspect", "logs", "start", "stop", "restart", "rebuild", "wait", "remove"],
+                  "features": ["inspection-json-v1", "lifecycle-json-v1", "lifecycle-explicit-targets",
+                               "lifecycle-dry-run", "bounded-readiness", "removal-preview-v1",
+                               "checkout-mutation-lock", "tls-probes", "local-memory-readiness"]}
+        if args.json:
+            print(json.dumps(report, indent=2))
+        else:
+            print("tk agent protocol 1")
+            print("Commands: " + ", ".join(report["commands"]))
+        return 0
     root = args.project_directory.resolve()
     report = {"schema_version": 1, "command": args.command, "ok": False, "services": [], "checks": []}
     try:

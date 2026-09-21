@@ -2,6 +2,8 @@
 
 ## Agent inspection and diagnostics
 
+`tk capabilities --json` checks the external CLI contract without Docker or Compose.
+
 `tk list --json` reports resolved routes; `tk status --json` adds container health.
 `tk doctor --probe --json` verifies readiness and HTTPS. Use
 `tk doctor --memory-hub /path/to/local-memory --json` for optional live hub readiness.

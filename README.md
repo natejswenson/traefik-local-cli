@@ -2,6 +2,18 @@
 
 ## Agent inspection and diagnostics
 
+`tk capabilities --json` reports the agent protocol, commands and feature flags
+without reading Compose, contacting Docker or sourcing `.tkrc`. Separately
+installed skills can check compatibility before operating a stack.
+
+The shared Codex/Claude operations skill is maintained in
+[claude-skills/traefik](https://github.com/natejswenson/claude-skills/tree/main/skills/traefik)
+and installed as `traefik@claude-skills`. It uses this CLI as an external dependency;
+updating a skill never copies or updates the CLI, Compose files or private state.
+The bundled `.claude/skills/tk` is a legacy entrypoint for existing installations;
+prefer the shared plugin for new installations. The stack-specific
+`traefik-onboard` workflow remains here.
+
 `tk list --json` reports resolved routes; `tk status --json` adds container health.
 `tk doctor --probe --json` verifies readiness and HTTPS. Use
 `tk doctor --memory-hub /path/to/local-memory --json` for optional live hub readiness.
