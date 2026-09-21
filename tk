@@ -29,7 +29,7 @@ case "${1:-}" in
     inspect|wait|start|up|stop|down|restart|rebuild)
         exec python3 "${SCRIPT_DIR}/lib/tk-operations.py" --project-directory "$PROJECT_ROOT" "$@"
         ;;
-    doctor|status|ps|list|ls)
+    capabilities|doctor|status|ps|list|ls)
         exec python3 "${SCRIPT_DIR}/lib/tk-inspect.py" --project-directory "$PROJECT_ROOT" "$@"
         ;;
 esac
@@ -78,6 +78,7 @@ show_help() {
     echo -e "  ${GREEN}list${NC}                  List all services"
     echo -e "  ${GREEN}status${NC}                Show service status"
     echo -e "  ${GREEN}doctor [--json]${NC}       Check readiness without changing the stack"
+    echo -e "  ${GREEN}capabilities --json${NC}   Report the agent CLI contract without Docker"
     echo -e "  ${GREEN}setup${NC}                 Initial Traefik setup"
     echo -e "  ${GREEN}cleanup${NC}               Clean up Traefik environment"
     echo -e "  ${GREEN}sync-hosts${NC}            Sync all services to /etc/hosts"

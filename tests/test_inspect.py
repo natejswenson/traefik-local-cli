@@ -103,6 +103,23 @@ else: sys.exit(9)
         self.assertTrue(json.loads(result.stdout)["ok"])
         self.assertFalse((self.root / "unexpected-side-effect").exists())
 
+    def test_capabilities_is_available_without_docker_compose_or_tkrc(self):
+        (self.root / ".tkrc").write_text("touch unexpected-side-effect\necho never-print-this-secret\n")
+        result = self.cli("capabilities", "--json", extra={"CONFIG_FAIL": "1", "DAEMON_FAIL": "1"})
+        data = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(data["protocol_version"], 1)
+        self.assertIn("removal-preview-v1", data["features"])
+        self.assertIn("rebuild", data["commands"])
+        self.assertFalse((self.root / "calls").exists())
+        self.assertFalse((self.root / "unexpected-side-effect").exists())
+        self.assertNotIn("never-print-this-secret", result.stdout + result.stderr)
+
+    def test_capabilities_rejects_targets_as_json_usage_error(self):
+        result = self.cli("capabilities", "api", "--json")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["error"]["code"], "invalid_arguments")
+
     def test_invalid_arguments_return_json_without_echoing_input_or_using_docker(self):
         for args in [("list", "--unexpected", "never-print-this-secret"), ("status", "--probe"),
                      ("doctor", "--probe", "--resolve-address", "never-print-this-secret")]:

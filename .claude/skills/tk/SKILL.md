@@ -5,6 +5,13 @@ description: Run tk CLI commands (start, stop, restart, status, list, logs, setu
 
 # tk
 
+Legacy entrypoint for existing installations. New installations should use the
+shared `traefik@claude-skills` plugin from the `claude-skills` marketplace, with
+`$traefik` in Codex or `/traefik:traefik` in Claude. When that plugin is available,
+load its shared skill and use its stack discovery and capability checks. This
+compatibility copy remains for users who have not migrated; do not install both
+as competing operations skills. The separate `traefik-onboard` workflow stays here.
+
 Natural-language front end for the `tk` CLI (`scripts/tk`) and its sibling scripts. Every dispatch
 below maps to a real command — nothing here reimplements `tk`'s logic. Re-present results as clean
 markdown (table/list/checklist); never paste raw `tk` stdout (ANSI codes, box-drawing) into chat.
