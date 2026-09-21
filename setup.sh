@@ -58,8 +58,7 @@ mkcert -install
 
 # 4. Wildcard certificate for *.internal (current) and *.home.local (legacy alias)
 echo "Generating SSL certificates..."
-mkcert -key-file certs/key.pem -cert-file certs/cert.pem \
-    "*.internal" "*.home.local" internal home.local localhost 127.0.0.1 ::1
+TRAEFIK_DIR="$PWD" bash "$(dirname "${BASH_SOURCE[0]}")/refresh-certs.sh"
 
 echo "✅ SSL certificates generated"
 

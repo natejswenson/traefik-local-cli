@@ -20,10 +20,6 @@ SKILL_FILE="${SCRIPTS_DIR}/.claude/skills/tk/SKILL.md"
     assert_file_contains "$SKILL_FILE" "traefik-onboard"
 }
 
-@test "tk skill's remove dispatch still bypasses tk's internal confirm prompt" {
-    assert_file_contains "$SKILL_FILE" "CONFIRM_DESTRUCTIVE=false"
-}
-
 @test "tk skill's cleanup dispatch still uses the no-newline-separator printf fix" {
     # The actual dispatch command must use the fixed 'printf %s%s' form. The
     # surrounding prose legitimately mentions the broken '%s\n%s' form when

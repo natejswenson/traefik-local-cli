@@ -1,5 +1,22 @@
 # TK CLI Library (test)
 
+`tk-inspect.py` implements read-only `tk list/status/doctor` (including `--json`).
+It uses Compose-resolved labels, bounded subprocesses, filtered output and optional
+TLS/local-memory probes. Python 3 standard library only. Test with
+`python3 -m unittest discover -s tests -p 'test_*.py'` from the scripts directory.
+
+`tk-operations.py` implements filtered `inspect`, bounded `wait`, and scoped
+`start/stop/restart/rebuild`. Targets are mandatory (one service or `--all`);
+mutations accept `--dry-run`. JSON outcomes include error codes, affected services
+and readiness. Start/rebuild exclude dependencies unless `--with-deps` is explicit.
+Neither helper executes `.tkrc`. Both use Compose's normal data configuration.
+
+`tk-remove.py` provides preview-first service removal. It checks dependencies,
+uses Compose to verify a minimal source edit, removes only selected containers,
+retains volumes and privately backs up the source. `--apply` is explicit. Structured
+mutations share a nonblocking checkout lock through completion; readers do not lock.
+
+
 Modular Bash libraries for the Traefik CLI (tk) tool.
 
 ## Structure

@@ -1,5 +1,70 @@
 # Traefik Scripts - AI Agent Guide
 
+## Agent inspection and diagnostics
+
+`tk list --json` reports resolved routes; `tk status --json` adds container health.
+`tk doctor --probe --json` verifies readiness and HTTPS. Use
+`tk doctor --memory-hub /path/to/local-memory --json` for optional live hub readiness.
+`tk logs SERVICE --tail 100` returns a bounded snapshot; pass `--follow` to stream.
+Inspection is read-only, does not source `.tkrc`, redacts Compose errors and has
+bounded command timeouts. Export `COMPOSE_FILE` or `DOCKER_COMPOSE_FILE` when needed.
+`status` exit 0 means inspection succeeded; `doctor` exits 1 on failed checks.
+
+`refresh-certs.sh` preserves wildcard names and adds concrete routed hosts for
+macOS TLS clients. Reload Traefik afterward. `setup-dns.sh --check` inspects DNS;
+`--apply` repairs macOS resolver files with administrator authentication.
+The parent stack provides Codex's `.agents/skills/traefik` and `AGENTS.md`.
+Run `./run-tests.sh` for Python regression tests plus the existing Bats suites.
+
+## Agent service operations
+
+Use exact Compose service names, available from `tk list --json`:
+
+```bash
+tk inspect my-api --json                     # build context, dependencies and URLs
+tk rebuild my-api --dry-run --json           # preview scope; no daemon changes
+tk rebuild my-api --json                     # build, recreate and wait for readiness
+tk wait my-api --timeout 30 --json            # read-only, bounded readiness check
+tk doctor my-api --probe --json              # verify the affected HTTPS routes
+tk start --all --json                        # explicitly start the whole configuration
+```
+
+`start`, `stop`, `restart`, `rebuild`, `inspect` and `wait` require a service or
+`--all`; missing/extra targets are errors. Lifecycle commands support `--dry-run`
+and return structured errors with `--json`. Start/rebuild exclude dependencies
+and verify them before applying; `--with-deps` explicitly permits dependency startup.
+Restart does not install a rebuilt image. Operations wait for running/healthy
+containers (stopped for `stop`); configured replica counts must be met. Use doctor
+for separate DNS/TLS verification. Timeouts default to 120 seconds, rebuild 600.
+Exit codes: 0 success, 1 runtime failure, 2 usage, 3 readiness deadline.
+
+A preview returns `state: planned` and `changed: false`. After successful Compose
+execution, `changed: true` means the action was accepted. On a failed/timed-out
+action, `changed: null` means partial effects are possible: inspect status before
+retrying. No automatic action retry or rollback occurs. Structured lifecycle
+commands, like inspection, do not execute `.tkrc`; use exported Compose settings.
+
+## Scoped removal
+
+`tk remove SERVICE --json` previews by default. Add `--apply` for an authorized
+removal of only that service's containers and Compose block. Other containers,
+volumes and app source remain; data stored only inside the removed container is
+lost. The CLI validates the candidate configuration, blocks referenced services,
+and saves a mode-600 source backup in ignored `.tk/backups/`. It does not use sudo
+or change DNS/hosts. Multi-file/override configurations require explicit manual edits.
+On partial failure, inspect `state`, `config_changed`, `error` and `backup` before retrying.
+
+Structured lifecycle/removal mutations hold a per-checkout lock. Concurrent writes
+return `operation_in_progress`; read-only commands and previews remain available.
+The lock is released automatically on process exit. Raw Docker and older onboarding
+scripts do not participate. Never delete an active lock file to bypass another command.
+
+Optional live test: `python3 tests/smoke_agent_operations.py` from this scripts
+checkout. It uses cached `traefik:3.6.5` and a unique disposable Docker project,
+verifies the neighboring service and retained volume, then cleans its fixture only.
+
+
+
 > **Purpose**: Comprehensive guide for AI coding agents (Claude, Copilot, Cursor, etc.) working with the Traefik automation scripts and CLI toolkit.
 
 **Last Updated**: 2026-01-14
@@ -228,9 +293,9 @@ esac
 - `tk add <name> [port] [language]` - Add new service
 - `tk status` - Show all service status
 - `tk logs [service]` - View service logs
-- `tk restart [service]` - Restart service(s)
-- `tk stop [service]` - Stop service(s)
-- `tk start [service]` - Start service(s)
+- `tk restart SERVICE (or --all)` - Restart service(s)
+- `tk stop SERVICE (or --all)` - Stop service(s)
+- `tk start SERVICE (or --all)` - Start service(s)
 - `tk clean` - Clean up Docker resources
 - `tk help [command]` - Show help
 

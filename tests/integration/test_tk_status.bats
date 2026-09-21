@@ -24,8 +24,8 @@ teardown() {
 
     run "${SCRIPTS_DIR}/tk" status
     assert_success
-    assert_output_contains "NAME"
-    assert_output_contains "STATUS"
+    assert_output_contains "test-service"
+    assert_output_contains "running"
 }
 
 @test "tk status shows service URLs" {

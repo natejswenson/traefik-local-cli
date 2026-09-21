@@ -27,36 +27,38 @@ Always double-quote interpolated `<path>`/`[name]`/`[D]` values (`$TK add "<path
 
 | Intent | Dispatch | Notes |
 |---|---|---|
-| start/stop/restart [service] | `$TK start\|stop\|restart [name]` | No confirmation needed. |
-| logs / tail logs | `docker compose --project-directory "$TRAEFIK_DIR" logs --tail=200 [name]` | Not `tk logs` — it has no `--tail` and dumps full history before following. |
-| list services | `$TK list` | See **URL derivation**. |
-| status / what's running | `$TK status` | See **URL derivation**. |
+| start/stop/restart service | `$TK start\|stop\|restart "<name>" --json` | Explicit `--all` for the whole configuration. `--dry-run` previews scope. |
+| rebuild existing service | `$TK rebuild "<name>" --json` | Inspect build context first; waits for readiness. |
+| wait for service | `$TK wait "<name>" --timeout 30 --json` | Read-only; nonzero exit on timeout. |
+| logs / tail logs | `$TK logs [name] --tail 200` | Finite snapshot; add `--follow` only for requested streaming. |
+| list services | `$TK list --json` | Resolved URLs, no Docker daemon required. |
+| status / what's running | `$TK status --json` | Resolved URLs and container health. |
 | set up the stack | `$TK setup` | Idempotent. Check `certs/cert.pem`/`mkcert -CAROOT` first — if the CA isn't already trusted, warn the user it may pop a system keychain dialog. |
 | clean up / reset the stack | See **Cleanup** | Never run bare. |
-| remove/delete service X | See **Remove** | Destructive — chat-confirm first. |
+| remove/delete service X | See **Remove** | Preview first; apply within the user-authorized scope. |
 | sync hosts | `$TK sync-hosts` | Run **sudo pre-flight** first. Known bug: can write a bogus entry pulled from docker-compose.yml's commented template block, and only ever derives `.home.local`. Scan the output and strip anything template-looking before calling it a success. |
 | version | `$TK version` | |
 | add/connect a service | See **Add** | Mandatory PII/API gate. |
 | anything unrecognized | `$TK help` | |
 
-## Sudo pre-flight (add / remove / sync-hosts)
-These three write `/etc/hosts` via sudo. Before dispatching any of them:
+## Sudo pre-flight (add / sync-hosts)
+These two write `/etc/hosts` via sudo. Before dispatching any of them:
 ```bash
 sudo -n true 2>/dev/null
 ```
-Succeeds → proceed. Fails → tell the user this needs sudo and none of the three commands can run
+Succeeds → proceed. Fails → tell the user this needs sudo and neither command can run
 non-interactively right now.
 
 **Confirmed (not just a caveat): telling the user to "run `sudo -v` in a terminal first" does not
 help.** The Bash tool's shell has no controlling tty (`tty` reports "not a tty"), and macOS's sudo
 scopes cached credentials per-tty (`tty_tickets`, on by default) — a `sudo -v` run in the user's real
 terminal warms a timestamp this check can never see, no matter how recently it was run. Don't tell
-the user to retry after `sudo -v`; it won't change the outcome. The only way to make these three
+the user to retry after `sudo -v`; it won't change the outcome. The only way to make these two
 commands work non-interactively is a narrowly-scoped `NOPASSWD` sudoers entry for the exact
 `tee -a /etc/hosts` / `sed ... /etc/hosts` invocations — set that up once, outside this skill, if you
-want `add`/`remove`/`sync-hosts` to stop requiring a manual `/etc/hosts` edit.
+want `add`/`sync-hosts` to stop requiring a manual `/etc/hosts` edit.
 
-Skip this check for `add --dry-run` and add's rebuild raw-bypass (`docker compose up -d --build`) —
+Skip this check for `add --dry-run` and targeted `tk rebuild` —
 neither touches `/etc/hosts`.
 
 ## Add
@@ -65,7 +67,7 @@ neither touches `/etc/hosts`.
 
    | Case | Then |
    |---|---|
-   | Name exists AND resolved `build.context` (via `docker compose --project-directory "$TRAEFIK_DIR" config`) matches the supplied `<path>` | Confirmed rebuild — skip the PII/API gate. If `<path>` known: `$TK add "<path>" "[name]"`. If not: `docker compose --project-directory "$TRAEFIK_DIR" up -d --build "<name>"` (one command — never a separate `build` + `$TK restart`, which only restarts in place and won't pick up the new image). Never pass `--port`/`--domain`/`--harden` on either branch. |
+   | Name exists AND resolved `build.context` (`build_context` from `$TK inspect "<name>" --json`) matches the supplied `<path>` | Confirmed rebuild — skip the PII/API gate. Preview `$TK rebuild "<name>" --dry-run --json`, then apply `$TK rebuild "<name>" --json`. This builds and recreates the target, excludes dependencies by default, and waits for readiness. Never pass `--port`/`--domain`/`--harden` on this branch. |
    | Name exists, build context does NOT match | Name conflict, not a rebuild — a name match alone proves nothing. Ask for a different name, then treat as new app (row below). |
    | No name match | New app — go to step 2. |
 
@@ -74,15 +76,16 @@ neither touches `/etc/hosts`.
    - Yes, or unknown → **do not dispatch anything this turn.** Tell the user this needs `traefik-onboard`'s hardening gate; they should re-invoke with that skill's trigger phrase, carrying the same `<path>`.
 
 ## Remove
-Chat-confirm first (state what happens: removed from compose, full `down`/`up -d`, an *attempt* at
-an `/etc/hosts` removal). Run sudo pre-flight, then:
-```bash
-CONFIRM_DESTRUCTIVE=false $TK remove <name>
-```
-`CONFIRM_DESTRUCTIVE=false` is required — without it, `tk`'s own confirm prompt reads from stdin,
-hits EOF, and silently no-ops. Hosts-cleanup isn't reliable (`tk`'s domain lookup misses or picks
-the wrong domain for real services) — tell the user to double-check `/etc/hosts` manually, don't
-state it as done.
+Preview with `$TK remove "<name>" --json`. Inspect the affected service, dependencies
+and data-retention note, then use `$TK remove "<name>" --apply --json` within the
+user's authorized scope. Removal defaults to preview and never prompts on stdin.
+It removes only the selected containers and Compose block; other services, volumes
+and app source remain. Container-only data is lost. No sudo or hosts edit is used.
+The source must be one supported Compose file; validation failures make no changes.
+A private backup path is returned after apply begins. On partial failure, inspect
+Docker and the current source before retrying; preserve concurrent user edits.
+Structured mutations share a checkout lock; `operation_in_progress` means wait for
+the other command to finish. Read-only status and previews remain available.
 
 ## Cleanup
 `cleanup.sh` prompts interactively with no non-interactive override. Ask the user in chat which of
@@ -93,14 +96,11 @@ cd "$TRAEFIK_DIR" && printf '%s%s' "<certs-answer:y|n>" "<env-answer:y|n>" | "$T
 No newline between the two answers — a newline-separated pipe drops the second one.
 
 ## URL derivation (status / list / setup)
-`tk status`/`tk list` synthesize `https://<service>.internal` from the service name, which is wrong
-for a custom `--domain`. Derive the real URL instead: run
-`docker compose --project-directory "$TRAEFIK_DIR" config` and read each service's resolved
-`traefik.http.routers.*.rule` (never grep raw `docker-compose.yml` — its labels have unresolved
-`${VAR}` interpolation). Prefer the `.internal` host when a rule has more than one; match any router
-key under the service's own labels, don't assume it equals the service name (e.g. `traefik`'s own
-router is `dashboard`); skip services with no router (e.g. `traefik.enable: "false"`). `tk setup`
-should list URLs for every service this same way, not a hardcoded subset.
+
+Use `tk list --json` or `tk status --json`; the CLI reads resolved router labels and
+prefers `.internal` hosts. Do not invent URLs from service names or print full
+Compose config, which contains secrets. For readiness use `tk doctor --probe --json`.
+An access failure means Docker is unavailable to this shell, not that services are stopped.
 
 ## Output presentation
 
@@ -110,7 +110,8 @@ should list URLs for every service this same way, not a hardcoded subset.
 | list | Bullet list, one service + URL per line. |
 | add | Service/Language/Framework/Port/Domain/Mode summary + resulting URL; bold-warn on `--harden` that the app must still enforce the token. Rebuild's raw-bypass branch emits a full build transcript — condense to a pass/fail summary. |
 | logs | Fenced code block, ANSI stripped; call out `error`/traceback lines above it. |
-| remove / cleanup | Before/after summary of what changed; phrase hosts-cleanup as "attempted, not guaranteed." |
+| remove | Report preview/applied state, exact service, preserved volumes, backup path and any partial failure. |
+| cleanup | Before/after summary of what changed. |
 | setup | Checklist (`✓ certs`, `✓ network`, `✓ stack up`) + URL list. |
 | errors | Plain-language failure + one concrete next step. |
 | everything else | Strip ANSI/box-drawing, show the rest plain. |
