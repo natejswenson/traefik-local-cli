@@ -4,8 +4,14 @@
 
 set -e
 
-# Get script and project directories
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so a tk installed on PATH still finds its libraries.
+TK_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$TK_SOURCE" ]; do
+    TK_DIR="$(cd "$(dirname "$TK_SOURCE")" && pwd)"
+    TK_SOURCE="$(readlink "$TK_SOURCE")"
+    [[ "$TK_SOURCE" = /* ]] || TK_SOURCE="$TK_DIR/$TK_SOURCE"
+done
+SCRIPT_DIR="$(cd "$(dirname "$TK_SOURCE")" && pwd)"
 
 # Support test mode - use current directory if TK_TEST_MODE is set
 if [ "${TK_TEST_MODE:-}" = "true" ]; then
@@ -13,6 +19,20 @@ if [ "${TK_TEST_MODE:-}" = "true" ]; then
 else
     PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
+
+# Structured commands have a clean JSON contract and must not source executable .tkrc
+# files or initialize shell logging. Compose loads .env itself as data.
+case "${1:-}" in
+    remove|rm)
+        exec python3 "${SCRIPT_DIR}/lib/tk-remove.py" --project-directory "$PROJECT_ROOT" "$@"
+        ;;
+    inspect|wait|start|up|stop|down|restart|rebuild)
+        exec python3 "${SCRIPT_DIR}/lib/tk-operations.py" --project-directory "$PROJECT_ROOT" "$@"
+        ;;
+    doctor|status|ps|list|ls)
+        exec python3 "${SCRIPT_DIR}/lib/tk-inspect.py" --project-directory "$PROJECT_ROOT" "$@"
+        ;;
+esac
 
 # Source library functions
 source "${SCRIPT_DIR}/lib/tk-common.sh"
@@ -47,13 +67,17 @@ show_help() {
     echo ""
     echo -e "${YELLOW}Commands:${NC}"
     echo -e "  ${GREEN}add <path> [name]${NC}     Add service to Traefik"
-    echo -e "  ${GREEN}remove <name>${NC}         Remove service from Traefik"
-    echo -e "  ${GREEN}start [name]${NC}          Start all services or specific service"
-    echo -e "  ${GREEN}stop [name]${NC}           Stop all services or specific service"
-    echo -e "  ${GREEN}restart [name]${NC}        Restart all services or specific service"
+    echo -e "  ${GREEN}remove <name>${NC}         Preview removal; --apply to execute"
+    echo -e "  ${GREEN}start <name>|--all${NC}   Start and wait for readiness"
+    echo -e "  ${GREEN}stop <name>|--all${NC}    Stop selected services"
+    echo -e "  ${GREEN}restart <name>|--all${NC} Restart and wait for readiness"
+    echo -e "  ${GREEN}rebuild <name>|--all${NC} Build, recreate and wait for readiness"
+    echo -e "  ${GREEN}inspect <name>|--all${NC} Inspect build paths and dependencies"
+    echo -e "  ${GREEN}wait <name>|--all${NC}    Wait for running/healthy containers"
     echo -e "  ${GREEN}logs [name]${NC}           View logs for all or specific service"
     echo -e "  ${GREEN}list${NC}                  List all services"
     echo -e "  ${GREEN}status${NC}                Show service status"
+    echo -e "  ${GREEN}doctor [--json]${NC}       Check readiness without changing the stack"
     echo -e "  ${GREEN}setup${NC}                 Initial Traefik setup"
     echo -e "  ${GREEN}cleanup${NC}               Clean up Traefik environment"
     echo -e "  ${GREEN}sync-hosts${NC}            Sync all services to /etc/hosts"
@@ -71,7 +95,7 @@ show_help() {
     echo "  tk remove custom-name"
     echo ""
     echo -e "  ${BLUE}# Start all services${NC}"
-    echo "  tk start"
+    echo "  tk start --all"
     echo ""
     echo -e "  ${BLUE}# Start specific service${NC}"
     echo "  tk start python-api"
@@ -84,6 +108,13 @@ show_help() {
     echo ""
     echo -e "  ${BLUE}# Sync all services to /etc/hosts${NC}"
     echo "  tk sync-hosts"
+    echo ""
+    echo "  tk inspect local-fitness --json  # Paths and dependencies, no secrets"
+    echo "  tk wait local-fitness --timeout 30 --json"
+    echo "  tk rebuild local-fitness --dry-run --json"
+    echo "  tk status --json          # Resolved URLs and container health"
+    echo "  tk doctor --probe --json  # Also verify HTTPS routes"
+    echo "  tk logs python-api --tail 100  # Bounded snapshot; --follow to stream"
     echo ""
 }
 
@@ -99,273 +130,11 @@ cmd_add() {
     "${SCRIPT_DIR}/connect-service.sh" "$@"
 }
 
-# Remove service command
-cmd_remove() {
-    if [ -z "$1" ]; then
-        log_error "Service name is required"
-        echo "Usage: tk remove <service-name>"
-        exit 1
-    fi
-
-    local service_name="$1"
-
-    # Validate service name
-    if ! validate_service_name "$service_name"; then
-        exit 1
-    fi
-
-    print_header "Removing Service from Traefik"
-    echo -e "${YELLOW}Service: ${service_name}${NC}"
-    echo ""
-
-    cd "$PROJECT_ROOT" || log_fatal "Cannot change to project root: $PROJECT_ROOT"
-
-    # Check if service exists
-    if ! service_exists "$service_name"; then
-        log_error "Service '$service_name' not found in docker-compose.yml"
-        exit 1
-    fi
-
-    # Confirm destructive operation
-    if ! confirm_destructive "Remove service '$service_name' from Traefik"; then
-        exit 0
-    fi
-
-    # Backup docker-compose.yml
-    local backup_path=$(backup_file "docker-compose.yml")
-    if [ -z "$backup_path" ]; then
-        log_fatal "Failed to create backup"
-    fi
-    print_status "success" "Backed up docker-compose.yml"
-
-    # Remove service from docker-compose.yml using awk
-    log_info "Removing from docker-compose.yml..."
-
-    awk -v service="$service_name" '
-    BEGIN {
-        skip_mode = 0
-        comment_buffer[0] = ""
-        comment_count = 0
-    }
-
-    # When we encounter a comment line at service level
-    /^  #/ {
-        if (skip_mode) {
-            # Still in skip mode, check if this is a comment header for the next service
-            # If it starts a new comment block (----), we are at the next service header
-            if (/^  #----/) {
-                skip_mode = 0
-                comment_count = 0
-            }
-        }
-
-        if (!skip_mode) {
-            # Buffer comment lines
-            comment_buffer[comment_count] = $0
-            comment_count++
-        }
-        next
-    }
-
-    # When we encounter a service definition line
-    /^  [a-zA-Z0-9_-]+:/ {
-        # Check if this is the service to remove
-        if ($0 ~ "^  " service ":") {
-            # Discard buffered comments and enter skip mode
-            comment_count = 0
-            skip_mode = 1
-            next
-        } else {
-            # This is a different service - output buffered comments first
-            for (i = 0; i < comment_count; i++) {
-                print comment_buffer[i]
-            }
-            comment_count = 0
-            skip_mode = 0
-            print
-            next
-        }
-    }
-
-    # Handle all other lines
-    {
-        if (skip_mode) {
-            # Skip lines that are part of the removed service
-            # Check if we hit a major section (networks, volumes, etc)
-            if (/^[a-zA-Z]/) {
-                skip_mode = 0
-                print
-            }
-            # Otherwise skip this line
-        } else {
-            # Not in skip mode - output the line
-            print
-        }
-    }
-    ' docker-compose.yml > docker-compose.yml.tmp
-
-    # Replace the original file
-    mv docker-compose.yml.tmp docker-compose.yml
-    print_status "success" "Removed from docker-compose.yml"
-
-    # Remove from /etc/hosts if present
-    log_info "Removing from /etc/hosts..."
-
-    # Extract the actual domain from docker-compose.yml before we delete the service
-    local domain=$(get_service_domain "$service_name" "$backup_path")
-
-    if [ -n "$domain" ]; then
-        if validate_domain "$domain"; then
-            if grep -q "127.0.0.1[[:space:]]${domain}" /etc/hosts 2>/dev/null; then
-                if sudo sed -i.bak "/127\.0\.0\.1[[:space:]]${domain}/d" /etc/hosts; then
-                    print_status "success" "Removed ${domain} from /etc/hosts"
-                    log_info "Removed ${domain} from /etc/hosts"
-                else
-                    print_status "warn" "Failed to remove ${domain} from /etc/hosts"
-                fi
-            else
-                print_status "warn" "${domain} not found in /etc/hosts"
-            fi
-        fi
-    else
-        print_status "warn" "Could not extract domain from service configuration"
-    fi
-
-    # Stop the entire stack
-    log_info "Stopping all services..."
-    if ! docker_compose_cmd down; then
-        log_error "Failed to stop services"
-        # Try to restore backup
-        if [ -f "$backup_path" ]; then
-            restore_file "$backup_path" "docker-compose.yml"
-            print_error "Failed to stop services. Backup restored."
-        fi
-        exit 1
-    fi
-
-    # Start the stack again
-    log_info "Starting services..."
-    if ! docker_compose_cmd up -d; then
-        log_error "Failed to start services"
-        exit 1
-    fi
-
-    print_success "Service '${service_name}' removed successfully\nAll remaining services restarted"
-
-    echo -e "${YELLOW}Note: Service directory was NOT deleted.${NC}"
-    echo -e "To restore, you can add it back with: ${CYAN}tk add <path>${NC}"
-    echo ""
-}
-
-# Start services command
-cmd_start() {
-    cd "$PROJECT_ROOT"
-
-    if [ -z "$1" ]; then
-        echo -e "${BLUE}🚀 Starting all services...${NC}"
-        docker compose up -d
-    else
-        echo -e "${BLUE}🚀 Starting service: $1${NC}"
-        docker compose up -d "$1"
-    fi
-
-    echo -e "${GREEN}✓ Done${NC}"
-}
-
-# Stop services command
-cmd_stop() {
-    cd "$PROJECT_ROOT"
-
-    if [ -z "$1" ]; then
-        echo -e "${YELLOW}🛑 Stopping all services...${NC}"
-        docker compose stop
-    else
-        echo -e "${YELLOW}🛑 Stopping service: $1${NC}"
-        docker compose stop "$1"
-    fi
-
-    echo -e "${GREEN}✓ Done${NC}"
-}
-
-# Restart services command
-cmd_restart() {
-    cd "$PROJECT_ROOT"
-
-    if [ -z "$1" ]; then
-        echo -e "${BLUE}🔄 Restarting all services...${NC}"
-        docker compose restart
-    else
-        echo -e "${BLUE}🔄 Restarting service: $1${NC}"
-        docker compose restart "$1"
-    fi
-
-    echo -e "${GREEN}✓ Done${NC}"
-}
-
 # Logs command
 cmd_logs() {
     cd "$PROJECT_ROOT"
-
-    if [ -z "$1" ]; then
-        echo -e "${BLUE}📋 Showing logs for all services...${NC}"
-        docker compose logs -f
-    else
-        echo -e "${BLUE}📋 Showing logs for: $1${NC}"
-        docker compose logs -f "$1"
-    fi
-}
-
-# List services command
-cmd_list() {
-    cd "$PROJECT_ROOT"
-
-    # Check if docker-compose.yml exists
-    if [ ! -f docker-compose.yml ]; then
-        log_error "docker-compose.yml not found in $PROJECT_ROOT"
-        return 1
-    fi
-
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║  Traefik Services                                          ║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-
-    # Extract service names from docker-compose.yml
-    echo -e "${YELLOW}Services in docker-compose.yml:${NC}"
-    sed -n '/^services:/,/^[a-z]/p' docker-compose.yml | \
-        grep "^  [a-z][a-z0-9_-]*:" | \
-        sed 's/://g' | \
-        sed 's/^  /  • /'
-    echo ""
-}
-
-# Status command
-cmd_status() {
-    cd "$PROJECT_ROOT"
-
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║  Service Status                                            ║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-
-    docker compose ps
-    echo ""
-
-    # Show URLs
-    echo -e "${CYAN}📍 Service URLs:${NC}"
-    echo -e "  • Traefik Dashboard: ${GREEN}https://traefik.internal${NC}"
-
-    # Extract service names and show their URLs
-    sed -n '/^services:/,/^[a-z]/p' docker-compose.yml | \
-        grep "^  [a-z][a-z0-9_-]*:" | \
-        sed 's/://g' | \
-        sed 's/^  //' | \
-        while IFS= read -r service; do
-            if [ "$service" != "traefik" ] && [ "$service" != "mongodb" ] && [ "$service" != "postgres" ] && [ "$service" != "redis" ]; then
-                echo -e "  • ${service}: ${GREEN}https://${service}.internal${NC}"
-            fi
-        done
-    echo ""
+    # Finish by default in non-interactive agents; streaming is opt-in.
+    docker compose logs --no-color --tail 200 "$@"
 }
 
 # Setup command
@@ -448,26 +217,8 @@ main() {
         add)
             cmd_add "$@"
             ;;
-        remove|rm)
-            cmd_remove "$@"
-            ;;
-        start|up)
-            cmd_start "$@"
-            ;;
-        stop|down)
-            cmd_stop "$@"
-            ;;
-        restart)
-            cmd_restart "$@"
-            ;;
         logs)
             cmd_logs "$@"
-            ;;
-        list|ls)
-            cmd_list
-            ;;
-        status|ps)
-            cmd_status
             ;;
         setup)
             cmd_setup

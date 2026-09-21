@@ -98,6 +98,7 @@ echo ""
 # Run unit tests
 if [ "$RUN_UNIT" = true ]; then
     echo -e "${YELLOW}Running unit tests...${NC}"
+    python3 -m unittest discover -s "$TEST_DIR" -p 'test_*.py'
 
     if [ "$VERBOSE" = true ]; then
         BATS_FLAGS="--verbose-run --show-output-of-passing-tests"

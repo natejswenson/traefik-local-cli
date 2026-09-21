@@ -8,6 +8,7 @@ COMPATIBILITY-FIX.md
 IMPROVEMENTS.md
 TEST_SUITE_SUMMARY.md
 # Backup files
+.tk/
 *.backup
 *.backup.*
 *.bak
@@ -37,3 +38,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+# Python inspection helpers/tests
+__pycache__/
+*.py[cod]
