@@ -221,3 +221,7 @@ versioned frontend contract before dispatch. The known 0.2.1 release remains
 compatible; future protocol versions require a frontend update. For a source
 checkout during development, `TK_PLATFORM_ROOT` explicitly bypasses installed
 release verification.
+
+`tk platform frontend-capabilities --json` reports the adapter's supported
+package protocol without reading the selected package. The local-k8s deployer
+uses it before selecting a candidate release.

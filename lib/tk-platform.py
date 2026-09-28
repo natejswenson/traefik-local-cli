@@ -85,6 +85,12 @@ def main():
         group = command[0] if command else ''
         if group not in ENTRIES:
             raise PackageError('platform_package_unavailable', 'Unsupported platform command')
+        if command in (['platform', 'frontend-capabilities'],
+                       ['platform', 'frontend-capabilities', '--json']):
+            print(json.dumps({'schema_version':1,'ok':True,'frontend_protocol_version':1,
+                              'supported_package_protocol_versions':[1],
+                              'verification':'selector-inventory-entry-contract'}))
+            return 0
         override = os.environ.get('TK_PLATFORM_ROOT')
         if override:
             entry = Path(override).expanduser().resolve() / 'src' / ENTRIES[group]

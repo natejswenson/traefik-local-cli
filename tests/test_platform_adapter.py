@@ -9,6 +9,17 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class PlatformAdapterTests(unittest.TestCase):
+    def test_frontend_capabilities_need_no_selected_package(self):
+        with tempfile.TemporaryDirectory() as temp:
+            env={k:v for k,v in os.environ.items() if k!='TK_PLATFORM_ROOT'}
+            env['TK_PLATFORM_CONFIG']=temp+'/missing.json'
+            proc=subprocess.run([str(ROOT/'tk'),'platform','frontend-capabilities','--json'],
+                                env=env,text=True,capture_output=True)
+            self.assertEqual(proc.returncode,0)
+            payload=json.loads(proc.stdout)
+            self.assertEqual(payload['frontend_protocol_version'],1)
+            self.assertEqual(payload['verification'],'selector-inventory-entry-contract')
+
     def installed(self, base, version='0.2.1', protocol=None):
         base=base.resolve()
         root=base/'release';(root/'src').mkdir(parents=True,exist_ok=True)
