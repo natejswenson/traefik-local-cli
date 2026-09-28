@@ -23,6 +23,9 @@ fi
 # Structured commands have a clean JSON contract and must not source executable .tkrc
 # files or initialize shell logging. Compose loads .env itself as data.
 case "${1:-}" in
+    dev|kube|app|service|agent|platform)
+        exec python3 "${SCRIPT_DIR}/lib/tk-platform.py" "$@"
+        ;;
     remove|rm)
         exec python3 "${SCRIPT_DIR}/lib/tk-remove.py" --project-directory "$PROJECT_ROOT" "$@"
         ;;
